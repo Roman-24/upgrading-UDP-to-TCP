@@ -18,18 +18,30 @@ CLIENT_INTERVAL = 10
 thread_status = True
 
 # ----- POMOCNE VECI -----
-class Myheader:
+class Mypacket:
 
-    def __init__(self, type, number, size, crc):
-        self.type = type    # je vlastne ten flag pripadne či sa jedná o mess alebo file
+    def __init__(self, flag, number, size, crc, data):
+        self.flag = flag
         self.number = number
         self.size = size
         self.crc = crc
+        self.data = data
+
+    def __bytes__(self):
+        temp = str(self.flag).to_bytes(1, 'big') + str(self.number).to_bytes(3, 'big') + str(self.size).to_bytes(2, 'big') + str(self.crc).to_bytes(2, 'big') + str(self.data).to_bytes()
+        return temp
 
 # ----- POMOCNE FUNKCIE -----
-def unpack_packet(packet):
+def packet_reconstruction(packet_as_bajty):
 
-    return
+    flag = str.from_bytes(packet_as_bajty[0:1], 'big')
+    number = int.from_bytes(packet_as_bajty[1:4], 'big')
+    size = int.from_bytes(packet_as_bajty[4:6], 'big')
+    crc = int.from_bytes(packet_as_bajty[6:8], 'big')
+    data = str.from_bytes(packet_as_bajty[8:], 'big')
+
+    packet_as_obj = Mypacket(flag, number, size, crc, data)
+    return packet_as_obj
 
 
 # ----- SERVER SITE FUNCS -----
@@ -148,8 +160,8 @@ def mode_client():
 
     while True:
 
-        address = "192.168.0.1"
-        #address = input("IP address for server: ")
+        address = "127.0.0.1"
+        #address = input("IP address of server: ")
         port = int(1234)
         #port = int(input("Client port: "))
         server_addr_tuple = (address, port)
@@ -158,12 +170,15 @@ def mode_client():
 
         try:
             client_socket.settimeout(TIMEOUT)
-            client_socket.sendto(str.encode(""), server_addr_tuple)
+            initialization_packet = Mypacket("a", 0, 0, 0, "")
+            initialization_packet = initialization_packet.__bytes__()
+            client_socket.sendto(initialization_packet, server_addr_tuple)
 
             data, address = client_socket.recvfrom(RECV_FROM)
-            data = data.decode()
+            data = packet_reconstruction(data)
 
-            if data == "a":
+            # ak prisiel flag na inicializaciu spojenia
+            if data.flag == "b":
                 print("Connected to address:", server_addr_tuple)
                 client_site(client_socket, server_addr_tuple)
 
