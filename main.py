@@ -27,6 +27,8 @@ KEEPALIVE_REQUEST = "k"
 CLIENT_INTERVAL = 10
 thread_status = True
 
+
+
 # ----- POMOCNE VECI -----
 class Mypacket:
 
@@ -54,54 +56,28 @@ def packet_reconstruction(packet_as_bajty):
     return packet_as_obj
 
 
+
 # ----- SERVER SITE FUNCS -----
 
 # funkcia sluzi ako spustitel serveru
-# to znamena ze si vyziada udaje potrebne na spustenie serveru (ip a port)
-#
 def mode_server():
 
     address = "127.0.0.1"
     #address = input("IP address of server: ")
     port = int(1234)
     #port = int(input("Server port: "))
-    addr_tuple = (address, port)
+    addr_tuple_server = (address, port)
+
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_socket.bind(addr_tuple)
+    server_socket.bind(addr_tuple_server)
 
-    try:
-        # cakanie na ziadost o spojenie SYN od klinta
-        data, address = server_socket.recvfrom(RECV_FROM)
-        data = packet_reconstruction(data)
-
-        # ak prisla ziadost o spojenie SYN
-        if data.flag == SYN:
-
-            # server posle klientovy SYN ACK
-            initialization_packet = Mypacket(SYN + ACK, 0, 0, 0, "")
-            server_socket.sendto(initialization_packet.__bytes__(), address)
-
-            # cakanie na potvrdenie spojenia ACK od klienta
-            data, address = server_socket.recvfrom(RECV_FROM)
-            data = packet_reconstruction(data)
-
-            # ak prislo ACK tak spojenie je active
-            if data.flag == ACK:
-                print(f"Established connection with {address}, port: {port}")
-                server_site(server_socket, address)
-            else:
-                print(f"Established connection failed")
-                return
-
-    except OSError:
-        print(f"Established connection failed")
-        return
-
+    server_site(server_socket, addr_tuple_server)
     pass
 
-def server_site(server_socket, address):
+# zanezpecuje 3 way hand shake na strane serveru
+def server_site(server_socket, addr_tuple_server):
 
-    while(True):
+    while (True):
 
         print("1 for continue as server")
         print("2 for switching role")
@@ -112,73 +88,85 @@ def server_site(server_socket, address):
             return
 
         elif client_input == "2":
-            switch_users(server_socket, address)
+            switch_users(server_socket, addr_tuple_server)
         elif client_input == "1":
 
             print("Server is running..")
-
             try:
-                # podla zadanie server preveruje spojenie kazdych 5-20s
-                server_socket.settimeout(TIMEOUT)
+                # cakanie na ziadost o spojenie SYN od klienta
+                data, addr_tuple_client = server_socket.recvfrom(RECV_FROM)
+                data = packet_reconstruction(data)
 
-                # pocuvanie na strane serveru
-                while True:
+                # ak prisla ziadost o spojenie SYN
+                if data.flag == SYN:
 
-                    # keep alive
-                    while True:
-                        data = server_socket.recvfrom(RECV_FROM)
-                        data = packet_reconstruction(data)
+                    # server posle klientovy SYN ACK
+                    initialization_packet = Mypacket(SYN + ACK, 0, 0, 0, "")
+                    server_socket.sendto(initialization_packet.__bytes__(), addr_tuple_client)
 
-                        # ak prisla keep alive poziadavka
-                        if data.flag == KEEPALIVE_REQUEST:
-                            acceptation_packet = Mypacket("a", 0, 0, 0, "")
-                            server_socket.sendto(acceptation_packet, address)
-                            break
-                        else:
-                            break
+                    # cakanie na potvrdenie spojenia ACK od klienta
+                    data, addr_tuple_client = server_socket.recvfrom(RECV_FROM)
+                    data = packet_reconstruction(data)
 
-                    # prijatie spravy
-                    number_of_packets = data.data
-                    print(f"Incoming data will consist of {number_of_packets} packets\n")
+                    # ak prislo ACK tak spojenie je active
+                    if data.flag == ACK:
+                        print(f"Established connection with {addr_tuple_client[0]}, port: {addr_tuple_client[1]}")
+                        server_as_receiver(server_socket, addr_tuple_client)
+                    else:
+                        print(f"Established connection failed")
+                        return
 
-                    # z toho co sme prijali chceme vytiahnut typ spravy bud to bude
-                    # transport spravy alebo transport file
-                    #
-                    # ak bude server prijimat subor
-                    if data.flag == "e":
-                        server_as_receiver(number_of_packets, server_socket, "f")
-                    # ak bude server prijimat text message
-                    elif data.flag == "b":
-                        server_as_receiver(number_of_packets, server_socket, "m")
-
-                    break
-                pass
-
-            except socket.timeout:
-                print("Client is inactive..\nShutting down..")
-                server_socket.close()
+            except OSError:
+                print(f"Established connection failed")
                 return
+
         else:
-            print("Wrong input, maybe try it again!")
+            print("Server: wrong input, maybe try it again!")
         pass
     pass
 
-def server_as_receiver(number_of_packets_com, server_socket, type):
+def server_as_receiver(server_socket, addr_tuple_client):
 
-    print("Server receiving text message or file..")
-
+    print("Server: receiving text message or file..")
     received_packets_total = 0
-    number_of_received_packets = 0
     full_message = []
 
     while True:
+        server_socket.settimeout(TIMEOUT)
 
+        # keep alive
         while True:
-            if number_of_received_packets == int(number_of_packets_com):
+            data = server_socket.recvfrom(RECV_FROM)
+            data = packet_reconstruction(data)
+
+            # ak prisla keep alive poziadavka
+            if data.flag == KEEPALIVE_REQUEST:
+                acceptation_packet = Mypacket(ACK, 0, 0, 0, "")
+                server_socket.sendto(acceptation_packet, addr_tuple_client)
+                break
+            else:
                 break
 
+        try:
             data, address = server_socket.recvfrom(RECV_FROM)
+            data = packet_reconstruction(data)
+        except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
+            print(err)
+            print("Server: Connection down!\nShutting down..")
+            server_socket.close()
+            return
 
+        # Treba vyriesit KA
+
+        if data.flag == RST:
+            print("An RST information has been received..")
+            server_socket.close()
+            return 0
+
+        if data.flag == START:
+            # na kolko packetov je to co sa prijima rozdelene
+            number_of_received_packets = data.number
+            confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
 
     pass
 
@@ -221,7 +209,7 @@ def mode_client():
                 print("Connected to address:", server_addr_tuple)
                 client_site(client_socket, server_addr_tuple)
 
-        except (socket.timeout, socket.gaierror, OSError, Exception) as err:
+        except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
             print(err)
             print("Connection not working!\nMaybe try it again..")
             client_socket.close()
