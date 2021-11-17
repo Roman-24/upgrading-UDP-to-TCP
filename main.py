@@ -131,12 +131,8 @@ def server_site(server_socket, addr_tuple_server):
 
 def server_as_receiver(server_socket, addr_tuple_client):
 
-    print("Server: receiving text message or file..")
-    receiving_packets_total = 0
-    received_packets = 0
-    full_message = ""
-
     while True:
+        print("Server: can receiving text message or file..")
         server_socket.settimeout(TIMEOUT)
 
         try:
@@ -170,6 +166,8 @@ def server_as_receiver(server_socket, addr_tuple_client):
             confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
             server_socket.sendto(confirmation_packet.__bytes__(), addr_tuple_client)
 
+            received_packets = 0
+            full_message = ""
             while True:
                 try:
                     data, address = server_socket.recvfrom(RECV_FROM)
@@ -262,8 +260,10 @@ def client_site(client_socket, server_addr_tuple):
 
             elif client_input == "1":
                 client_as_sender(client_socket, server_addr_tuple, "m")
+                continue
             elif client_input == "2":
                 client_as_sender(client_socket, server_addr_tuple, "f")
+                continue
 
             elif client_input == "5":
                 switch_users(client_socket, server_addr_tuple)
@@ -290,7 +290,8 @@ def client_as_sender(client_socket, server_addr_tuple, type):
 
         try:
             message = input("Enter the message: ")
-            arr_mess = [message[i:i+MAX_DATA_SIZE] for i in range(0, len(message), MAX_DATA_SIZE)]
+            arr_mess = textwrap.wrap(message, MAX_DATA_SIZE)
+            # arr_mess = [message[i:i+MAX_DATA_SIZE] for i in range(0, len(message), MAX_DATA_SIZE)]
 
             # poslanie spravy so START flagom
             num_of_packets = math.ceil(len(message) / MAX_DATA_SIZE)
