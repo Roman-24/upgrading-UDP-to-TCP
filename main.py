@@ -10,10 +10,20 @@ RECV_FROM = 1500
 FORMAT = "utf-8"
 TIMEOUT = 20
 
-#server site
+# flags
+START = 0
+SYN = 1
+ACK = 2
+NACK = 4
+KA = 16
+RST = 32
+TEXT = 64
+FILE = 128
+
+# server site
 KEEPALIVE_REQUEST = "k"
 
-#client site
+# client site
 CLIENT_INTERVAL = 10
 thread_status = True
 
@@ -28,17 +38,17 @@ class Mypacket:
         self.data = data
 
     def __bytes__(self):
-        temp = str(self.flag).to_bytes(1, 'big') + str(self.number).to_bytes(3, 'big') + str(self.size).to_bytes(2, 'big') + str(self.crc).to_bytes(2, 'big') + str(self.data).to_bytes()
+        temp = self.flag.to_bytes(1, 'big') + self.number.to_bytes(3, 'big') + self.size.to_bytes(2, 'big') + self.crc.to_bytes(2, 'big') + self.data.encode(FORMAT)
         return temp
 
 # ----- POMOCNE FUNKCIE -----
 def packet_reconstruction(packet_as_bajty):
 
-    flag = str.from_bytes(packet_as_bajty[0:1], 'big')
+    flag = int.from_bytes(packet_as_bajty[0:1], 'big')
     number = int.from_bytes(packet_as_bajty[1:4], 'big')
     size = int.from_bytes(packet_as_bajty[4:6], 'big')
     crc = int.from_bytes(packet_as_bajty[6:8], 'big')
-    data = str.from_bytes(packet_as_bajty[8:], 'big')
+    data = packet_as_bajty[8:].decode(FORMAT)
 
     packet_as_obj = Mypacket(flag, number, size, crc, data)
     return packet_as_obj
@@ -51,21 +61,41 @@ def packet_reconstruction(packet_as_bajty):
 #
 def mode_server():
 
+    address = "127.0.0.1"
+    #address = input("IP address of server: ")
     port = int(1234)
-    #port = int(input("Post: "))
-    addr_tuple = ("", port)
+    #port = int(input("Server port: "))
+    addr_tuple = (address, port)
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server_socket.bind(addr_tuple)
 
     try:
+        # cakanie na ziadost o spojenie SYN od klinta
         data, address = server_socket.recvfrom(RECV_FROM)
-        server_socket.sendto(str.encode("a"), address)
+        data = packet_reconstruction(data)
 
-        print(f"Established connection with {address}, port: {port}")
-        server_site(server_socket, address)
+        # ak prisla ziadost o spojenie SYN
+        if data.flag == SYN:
+
+            # server posle klientovy SYN ACK
+            initialization_packet = Mypacket(SYN + ACK, 0, 0, 0, "")
+            server_socket.sendto(initialization_packet.__bytes__(), address)
+
+            # cakanie na potvrdenie spojenia ACK od klienta
+            data, address = server_socket.recvfrom(RECV_FROM)
+            data = packet_reconstruction(data)
+
+            # ak prislo ACK tak spojenie je active
+            if data.flag == ACK:
+                print(f"Established connection with {address}, port: {port}")
+                server_site(server_socket, address)
+            else:
+                print(f"Established connection failed")
+                return
 
     except OSError:
         print(f"Established connection failed")
+        return
 
     pass
 
@@ -97,29 +127,29 @@ def server_site(server_socket, address):
                     # keep alive
                     while True:
                         data = server_socket.recvfrom(RECV_FROM)
-                        information = str(data.decode())
+                        data = packet_reconstruction(data)
 
                         # ak prisla keep alive poziadavka
-                        if information == KEEPALIVE_REQUEST:
-                            server_socket.sendto(str.encode(KEEPALIVE_REQUEST), address)
-                            information = ""
+                        if data.flag == KEEPALIVE_REQUEST:
+                            acceptation_packet = Mypacket("a", 0, 0, 0, "")
+                            server_socket.sendto(acceptation_packet, address)
                             break
-                        break
+                        else:
+                            break
 
                     # prijatie spravy
-                    number_of_packets = information[1:]
+                    number_of_packets = data.data
                     print(f"Incoming data will consist of {number_of_packets} packets\n")
 
-                    # z toho co sme prijali chceme vytiahnut info spravy bud to bude
-                    # transport spravy alebo transtorf file
-                    type = information[0]
-
+                    # z toho co sme prijali chceme vytiahnut typ spravy bud to bude
+                    # transport spravy alebo transport file
+                    #
                     # ak bude server prijimat subor
-                    if type == "m":
-                        server_as_receiver(number_of_packets, server_socket, "m")
-                    # ak bude server prijimat text message
-                    elif type == "f":
+                    if data.flag == "e":
                         server_as_receiver(number_of_packets, server_socket, "f")
+                    # ak bude server prijimat text message
+                    elif data.flag == "b":
+                        server_as_receiver(number_of_packets, server_socket, "m")
 
                     break
                 pass
@@ -134,6 +164,8 @@ def server_site(server_socket, address):
     pass
 
 def server_as_receiver(number_of_packets_com, server_socket, type):
+
+    print("Server receiving text message or file..")
 
     received_packets_total = 0
     number_of_received_packets = 0
@@ -170,22 +202,31 @@ def mode_client():
 
         try:
             client_socket.settimeout(TIMEOUT)
-            initialization_packet = Mypacket("a", 0, 0, 0, "")
-            initialization_packet = initialization_packet.__bytes__()
-            client_socket.sendto(initialization_packet, server_addr_tuple)
 
+            # poslanie poziadavky na spojenie SYN
+            initialization_packet = Mypacket(SYN, 0, 0, 0, "")
+            client_socket.sendto(initialization_packet.__bytes__(), server_addr_tuple)
+
+            # cakanie na SYN ACK od serveru
             data, address = client_socket.recvfrom(RECV_FROM)
             data = packet_reconstruction(data)
 
-            # ak prisiel flag na inicializaciu spojenia
-            if data.flag == "b":
+            # ak od serveru prislo potvrdenie spojenia SYN ACK
+            if data.flag == SYN + ACK:
+
+                # tak posle potvrdenie aj klient teda posle ACK
+                initialization_packet = Mypacket(ACK, 0, 0, 0, "")
+                client_socket.sendto(initialization_packet.__bytes__(), server_addr_tuple)
+
                 print("Connected to address:", server_addr_tuple)
                 client_site(client_socket, server_addr_tuple)
 
-        except (socket.timeout, socket.gaierror) as err:
+        except (socket.timeout, socket.gaierror, OSError, Exception) as err:
             print(err)
             print("Connection not working!\nMaybe try it again..")
-            continue
+            client_socket.close()
+            return
+            # continue
 
 def client_site(client_socket, server_addr_tuple):
     global thread_status
