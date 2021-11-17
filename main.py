@@ -134,34 +134,28 @@ def server_as_receiver(server_socket, addr_tuple_client):
     while True:
         server_socket.settimeout(TIMEOUT)
 
-        # keep alive
-        while True:
-            data = server_socket.recvfrom(RECV_FROM)
-            data = packet_reconstruction(data)
-
-            # ak prisla keep alive poziadavka
-            if data.flag == KEEPALIVE_REQUEST:
-                acceptation_packet = Mypacket(ACK, 0, 0, 0, "")
-                server_socket.sendto(acceptation_packet, addr_tuple_client)
-                break
-            else:
-                break
-
         try:
             data, address = server_socket.recvfrom(RECV_FROM)
             data = packet_reconstruction(data)
         except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
             print(err)
-            print("Server: Connection down!\nShutting down..")
+            print("Server: Connection down!")
             server_socket.close()
             return
 
         # Treba vyriesit KA
 
         if data.flag == RST:
-            print("An RST information has been received..")
+            print("An RST information has been received..\nConnection shutting down..")
             server_socket.close()
             return 0
+
+        # keep alive
+        # ak prisla keep alive poziadavka
+        if data.flag == KEEPALIVE_REQUEST:
+            acceptation_packet = Mypacket(ACK, 0, 0, 0, "")
+            server_socket.sendto(acceptation_packet, addr_tuple_client)
+            continue
 
         if data.flag == START:
             # na kolko packetov je to co sa prijima rozdelene
@@ -235,6 +229,8 @@ def client_site(client_socket, server_addr_tuple):
                 thread.join()
 
             if client_input == "x":
+                exit_packet = Mypacket(RST, 0, 0, 0, "")
+                client_socket.sendto(exit_packet.__bytes__(), server_addr_tuple)
                 return
 
             elif client_input == "1":
