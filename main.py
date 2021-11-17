@@ -1,14 +1,15 @@
-
+import math
 import socket
 import threading
 import time
+import textwrap
 
 # ----- KONSTANTY -----
 
 # universal
 RECV_FROM = 1500
 FORMAT = "utf-8"
-TIMEOUT = 20
+TIMEOUT = 200
 
 # flags
 START = 0
@@ -23,6 +24,10 @@ FILE = 128
 # server site
 
 # client site
+
+#               ETH_II_PAYLOAD - IP_HEADER_LEN - UDP_HEADER_LEN - MY_HEADER
+MAX_DATA_SIZE = 1500 - 20 - 8 - 8
+
 CLIENT_INTERVAL = 10
 thread_status = True
 
@@ -154,32 +159,35 @@ def server_as_receiver(server_socket, addr_tuple_client):
         # ak prisla keep alive poziadavka
         if data.flag == KA:
             acceptation_packet = Mypacket(ACK, 0, 0, 0, "")
-            server_socket.sendto(acceptation_packet, addr_tuple_client)
+            server_socket.sendto(acceptation_packet.__bytes__(), addr_tuple_client)
             continue
 
         if data.flag == START:
             # na kolko packetov je to co sa prijima rozdelene
             receiving_packets_total = data.number
             print(f"Incoming data will consist of {receiving_packets_total} packets\n")
+
             confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
-            server_socket.sendto(confirmation_packet, addr_tuple_client)
+            server_socket.sendto(confirmation_packet.__bytes__(), addr_tuple_client)
 
-            try:
-                data, address = server_socket.recvfrom(RECV_FROM)
-                data = packet_reconstruction(data)
+            while True:
+                try:
+                    data, address = server_socket.recvfrom(RECV_FROM)
+                    data = packet_reconstruction(data)
 
-                if data.flag == TEXT:
-                    full_message += data.data.decode()
-                    received_packets += 1
+                    if data.flag == TEXT:
+                        full_message += data.data
+                        received_packets += 1
 
-                if received_packets == receiving_packets_total:
-                    print("Message: ", full_message)
+                    if received_packets == receiving_packets_total:
+                        print("Message: ", full_message)
+                        break
 
-            except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
-                print(err)
-                print("Server: Connection lost! Received data can be broken..")
-                server_socket.close()
-                return
+                except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
+                    print(err)
+                    print("Server: Connection lost! Received data can be broken..")
+                    server_socket.close()
+                    return
 
     pass
 
@@ -278,7 +286,35 @@ def client_site(client_socket, server_addr_tuple):
 
 def client_as_sender(client_socket, server_addr_tuple, type):
 
-    pass
+    if type == "m":
+
+        try:
+            message = input("Enter the message: ")
+            arr_mess = [message[i:i+MAX_DATA_SIZE] for i in range(0, len(message), MAX_DATA_SIZE)]
+
+            # poslanie spravy so START flagom
+            num_of_packets = math.ceil(len(message) / MAX_DATA_SIZE)
+            inicialization_mess_packet = Mypacket(START, num_of_packets, 0, 0, "")
+            client_socket.sendto(inicialization_mess_packet.__bytes__(), server_addr_tuple)
+
+            data, server_addr_tuple = client_socket.recvfrom(RECV_FROM)
+            data = packet_reconstruction(data)
+
+            if data.flag == ACK:
+                count = 1
+                for mess_part_packet in arr_mess:
+                    mess_packet = Mypacket(TEXT, count, 0, 0, mess_part_packet)
+                    client_socket.sendto(mess_packet.__bytes__(), server_addr_tuple)
+
+        except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
+            print(err)
+            print("Client: Connection down! Data error..")
+            client_socket.close()
+            return
+
+        pass
+
+    return
 
 # ----- OTHERS FUNC -----
 def switch_users(client_socket, server_addr_tuple):
