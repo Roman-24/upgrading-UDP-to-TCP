@@ -21,7 +21,6 @@ TEXT = 64
 FILE = 128
 
 # server site
-KEEPALIVE_REQUEST = "k"
 
 # client site
 CLIENT_INTERVAL = 10
@@ -128,8 +127,9 @@ def server_site(server_socket, addr_tuple_server):
 def server_as_receiver(server_socket, addr_tuple_client):
 
     print("Server: receiving text message or file..")
-    received_packets_total = 0
-    full_message = []
+    receiving_packets_total = 0
+    received_packets = 0
+    full_message = ""
 
     while True:
         server_socket.settimeout(TIMEOUT)
@@ -152,15 +152,34 @@ def server_as_receiver(server_socket, addr_tuple_client):
 
         # keep alive
         # ak prisla keep alive poziadavka
-        if data.flag == KEEPALIVE_REQUEST:
+        if data.flag == KA:
             acceptation_packet = Mypacket(ACK, 0, 0, 0, "")
             server_socket.sendto(acceptation_packet, addr_tuple_client)
             continue
 
         if data.flag == START:
             # na kolko packetov je to co sa prijima rozdelene
-            number_of_received_packets = data.number
+            receiving_packets_total = data.number
+            print(f"Incoming data will consist of {receiving_packets_total} packets\n")
             confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
+            server_socket.sendto(confirmation_packet, addr_tuple_client)
+
+            try:
+                data, address = server_socket.recvfrom(RECV_FROM)
+                data = packet_reconstruction(data)
+
+                if data.flag == TEXT:
+                    full_message += data.data.decode()
+                    received_packets += 1
+
+                if received_packets == receiving_packets_total:
+                    print("Message: ", full_message)
+
+            except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
+                print(err)
+                print("Server: Connection lost! Received data can be broken..")
+                server_socket.close()
+                return
 
     pass
 
