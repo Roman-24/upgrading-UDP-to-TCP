@@ -286,9 +286,8 @@ def client_site(client_socket, server_addr_tuple):
 
 def client_as_sender(client_socket, server_addr_tuple, type):
 
-    if type == "m":
-
-        try:
+    try:
+        if type == "m":
             message = input("Enter the message: ")
             arr_mess = textwrap.wrap(message, MAX_DATA_SIZE)
             # arr_mess = [message[i:i+MAX_DATA_SIZE] for i in range(0, len(message), MAX_DATA_SIZE)]
@@ -306,14 +305,16 @@ def client_as_sender(client_socket, server_addr_tuple, type):
                 for mess_part_packet in arr_mess:
                     mess_packet = Mypacket(TEXT, count, 0, 0, mess_part_packet)
                     client_socket.sendto(mess_packet.__bytes__(), server_addr_tuple)
+            pass
 
-        except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
-            print(err)
-            print("Client: Connection down! Data error..")
-            client_socket.close()
-            return
+        elif type == "f":
 
-        pass
+
+    except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
+        print(err)
+        print("Client: Connection down! Data error..")
+        client_socket.close()
+        return
 
     return
 
