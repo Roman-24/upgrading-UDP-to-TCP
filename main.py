@@ -3,6 +3,8 @@ import socket
 import threading
 import time
 import textwrap
+import os
+# from pyautogui import typewrite
 
 # ----- KONSTANTY -----
 
@@ -31,8 +33,6 @@ MAX_DATA_SIZE = 1500 - 20 - 8 - 8
 CLIENT_INTERVAL = 10
 thread_status = True
 
-
-
 # ----- POMOCNE VECI -----
 class Mypacket:
 
@@ -43,18 +43,23 @@ class Mypacket:
         self.crc = crc
         self.data = data
 
-    def __bytes__(self):
-        temp = self.flag.to_bytes(1, 'big') + self.number.to_bytes(3, 'big') + self.size.to_bytes(2, 'big') + self.crc.to_bytes(2, 'big') + self.data.encode(FORMAT)
+    def __bytes__(self, file_flag):
+        data = self.data if file_flag else self.data.encode(FORMAT)
+        temp = self.flag.to_bytes(1, 'big') + self.number.to_bytes(3, 'big') + self.size.to_bytes(2, 'big') + self.crc.to_bytes(2, 'big') + data
         return temp
 
 # ----- POMOCNE FUNKCIE -----
-def packet_reconstruction(packet_as_bajty):
+def packet_reconstruction(packet_as_bajty, flag_decode_off):
 
     flag = int.from_bytes(packet_as_bajty[0:1], 'big')
     number = int.from_bytes(packet_as_bajty[1:4], 'big')
     size = int.from_bytes(packet_as_bajty[4:6], 'big')
     crc = int.from_bytes(packet_as_bajty[6:8], 'big')
-    data = packet_as_bajty[8:].decode(FORMAT)
+
+    if flag_decode_off:
+        data = packet_as_bajty[8:]
+    else:
+        data = packet_as_bajty[8:].decode(FORMAT)
 
     packet_as_obj = Mypacket(flag, number, size, crc, data)
     return packet_as_obj
@@ -99,18 +104,18 @@ def server_site(server_socket, addr_tuple_server):
             try:
                 # cakanie na ziadost o spojenie SYN od klienta
                 data, addr_tuple_client = server_socket.recvfrom(RECV_FROM)
-                data = packet_reconstruction(data)
+                data = packet_reconstruction(data, False)
 
                 # ak prisla ziadost o spojenie SYN
                 if data.flag == SYN:
 
                     # server posle klientovy SYN ACK
                     initialization_packet = Mypacket(SYN + ACK, 0, 0, 0, "")
-                    server_socket.sendto(initialization_packet.__bytes__(), addr_tuple_client)
+                    server_socket.sendto(initialization_packet.__bytes__(False), addr_tuple_client)
 
                     # cakanie na potvrdenie spojenia ACK od klienta
                     data, addr_tuple_client = server_socket.recvfrom(RECV_FROM)
-                    data = packet_reconstruction(data)
+                    data = packet_reconstruction(data, False)
 
                     # ak prislo ACK tak spojenie je active
                     if data.flag == ACK:
@@ -137,7 +142,7 @@ def server_as_receiver(server_socket, addr_tuple_client):
 
         try:
             data, address = server_socket.recvfrom(RECV_FROM)
-            data = packet_reconstruction(data)
+            data = packet_reconstruction(data, False)
         except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
             print(err)
             print("Server: Connection down!")
@@ -155,7 +160,7 @@ def server_as_receiver(server_socket, addr_tuple_client):
         # ak prisla keep alive poziadavka
         if data.flag == KA:
             acceptation_packet = Mypacket(ACK, 0, 0, 0, "")
-            server_socket.sendto(acceptation_packet.__bytes__(), addr_tuple_client)
+            server_socket.sendto(acceptation_packet.__bytes__(False), addr_tuple_client)
             continue
 
         if data.flag == START:
@@ -164,21 +169,32 @@ def server_as_receiver(server_socket, addr_tuple_client):
             print(f"Incoming data will consist of {receiving_packets_total} packets\n")
 
             confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
-            server_socket.sendto(confirmation_packet.__bytes__(), addr_tuple_client)
+            server_socket.sendto(confirmation_packet.__bytes__(False), addr_tuple_client)
 
             received_packets = 0
-            full_message = ""
+            full_message = b""
+            file_flag = False
+            file = None
             while True:
                 try:
                     data, address = server_socket.recvfrom(RECV_FROM)
-                    data = packet_reconstruction(data)
+                    data = packet_reconstruction(data, True)
+
+                    if data.flag == FILE and data.number == 1:
+                        file_flag = True
+                        #file = open(data.data, "w")
+                        file = open(data.data, "ab")
 
                     if data.flag == TEXT:
                         full_message += data.data
                         received_packets += 1
 
                     if received_packets == receiving_packets_total:
-                        print("Message: ", full_message)
+
+                        if file_flag and file != None:
+                            file.write(full_message)
+                        else:
+                            print("Message: ", full_message)
                         break
 
                 except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
@@ -212,18 +228,18 @@ def mode_client():
 
             # poslanie poziadavky na spojenie SYN
             initialization_packet = Mypacket(SYN, 0, 0, 0, "")
-            client_socket.sendto(initialization_packet.__bytes__(), server_addr_tuple)
+            client_socket.sendto(initialization_packet.__bytes__(False), server_addr_tuple)
 
             # cakanie na SYN ACK od serveru
             data, address = client_socket.recvfrom(RECV_FROM)
-            data = packet_reconstruction(data)
+            data = packet_reconstruction(data, False)
 
             # ak od serveru prislo potvrdenie spojenia SYN ACK
             if data.flag == SYN + ACK:
 
                 # tak posle potvrdenie aj klient teda posle ACK
                 initialization_packet = Mypacket(ACK, 0, 0, 0, "")
-                client_socket.sendto(initialization_packet.__bytes__(), server_addr_tuple)
+                client_socket.sendto(initialization_packet.__bytes__(False), server_addr_tuple)
 
                 print("Connected to address:", server_addr_tuple)
                 client_site(client_socket, server_addr_tuple)
@@ -255,7 +271,7 @@ def client_site(client_socket, server_addr_tuple):
 
             if client_input == "x":
                 exit_packet = Mypacket(RST, 0, 0, 0, "")
-                client_socket.sendto(exit_packet.__bytes__(), server_addr_tuple)
+                client_socket.sendto(exit_packet.__bytes__(False), server_addr_tuple)
                 return
 
             elif client_input == "1":
@@ -287,28 +303,45 @@ def client_site(client_socket, server_addr_tuple):
 def client_as_sender(client_socket, server_addr_tuple, type):
 
     try:
+        message = ""
+        file_flag = False
         if type == "m":
             message = input("Enter the message: ")
-            arr_mess = textwrap.wrap(message, MAX_DATA_SIZE)
-            # arr_mess = [message[i:i+MAX_DATA_SIZE] for i in range(0, len(message), MAX_DATA_SIZE)]
-
-            # poslanie spravy so START flagom
-            num_of_packets = math.ceil(len(message) / MAX_DATA_SIZE)
-            inicialization_mess_packet = Mypacket(START, num_of_packets, 0, 0, "")
-            client_socket.sendto(inicialization_mess_packet.__bytes__(), server_addr_tuple)
-
-            data, server_addr_tuple = client_socket.recvfrom(RECV_FROM)
-            data = packet_reconstruction(data)
-
-            if data.flag == ACK:
-                count = 1
-                for mess_part_packet in arr_mess:
-                    mess_packet = Mypacket(TEXT, count, 0, 0, mess_part_packet)
-                    client_socket.sendto(mess_packet.__bytes__(), server_addr_tuple)
-            pass
-
         elif type == "f":
+            file_path = input("Enter the full file path: ")
+            #typewrite('C:\Users\bitar\PycharmProjects\PKS_zadanie2\\')
+            file_name = os.path.basename(file_path)
 
+            # flag na poslanie nazvu suboru
+            file_flag = True
+            temp_file = open(file_path, "rb")
+            message = temp_file.read()
+
+        # arr_mess = textwrap.wrap(message, MAX_DATA_SIZE)
+        arr_mess = [message[i:i+MAX_DATA_SIZE] for i in range(0, len(message), MAX_DATA_SIZE)]
+
+        # poslanie spravy so START flagom
+        num_of_packets = math.ceil(len(message) / MAX_DATA_SIZE)
+        inicialization_mess_packet = Mypacket(START, num_of_packets, 0, 0, "")
+        client_socket.sendto(inicialization_mess_packet.__bytes__(False), server_addr_tuple)
+
+        data, server_addr_tuple = client_socket.recvfrom(RECV_FROM)
+        data = packet_reconstruction(data, False)
+
+        if data.flag == ACK:
+            count = 1
+
+            flag = TEXT if (type == "m") else FILE
+
+            # ak sa posiela subor prvy packet posle nazov suboru
+            if count == 1 and flag == FILE:
+                file_name_packet = Mypacket(flag, count, 0, 0, file_name)
+                client_socket.sendto(file_name_packet.__bytes__(False), server_addr_tuple)
+
+            for mess_part_packet in arr_mess:
+                mess_packet = Mypacket(TEXT, count, 0, 0, mess_part_packet)
+                client_socket.sendto(mess_packet.__bytes__(file_flag), server_addr_tuple)
+                count += 1
 
     except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
         print(err)
