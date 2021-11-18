@@ -26,14 +26,13 @@ FILE = 128
 # server site
 
 # client site
-
-#               ETH_II_PAYLOAD - IP_HEADER_LEN - UDP_HEADER_LEN - MY_HEADER
+# MAX_DATA_SIZE = ETH_II_PAYLOAD - IP_HEADER_LEN - UDP_HEADER_LEN - MY_HEADER
 MAX_DATA_SIZE = 1500 - 20 - 8 - 8
-
 CLIENT_INTERVAL = 10
 thread_status = True
 
 # ----- POMOCNE VECI -----
+# class na lepsiu manipulaciu datami packetu
 class Mypacket:
 
     def __init__(self, flag, number, size, crc, data):
@@ -43,6 +42,7 @@ class Mypacket:
         self.crc = crc
         self.data = data
 
+    # custom funkcia na vytvorenie byte stringu obsahujuceho udaje o packete + data
     def __bytes__(self, file_flag):
         data = self.data if file_flag else self.data.encode(FORMAT)
         temp = self.flag.to_bytes(1, 'big') + self.number.to_bytes(3, 'big') + self.size.to_bytes(2, 'big') + self.crc.to_bytes(2, 'big') + data
@@ -56,6 +56,7 @@ def packet_reconstruction(packet_as_bajty, flag_decode_off):
     size = int.from_bytes(packet_as_bajty[4:6], 'big')
     crc = int.from_bytes(packet_as_bajty[6:8], 'big')
 
+    # flad urcuje ci budu prijate bajty decodeovane alebo ostanu v podobne raw bajtov
     if flag_decode_off:
         data = packet_as_bajty[8:]
     else:
@@ -83,7 +84,7 @@ def mode_server():
     server_site(server_socket, addr_tuple_server)
     pass
 
-# zanezpecuje 3 way hand shake na strane serveru
+# zabezpecuje 3 way hand shake na strane serveru
 def server_site(server_socket, addr_tuple_server):
 
     while (True):
@@ -122,11 +123,11 @@ def server_site(server_socket, addr_tuple_server):
                         print(f"Established connection with {addr_tuple_client[0]}, port: {addr_tuple_client[1]}")
                         server_as_receiver(server_socket, addr_tuple_client)
                     else:
-                        print(f"Established connection failed")
+                        print(f"Established connection failed!")
                         return
 
             except OSError:
-                print(f"Established connection failed")
+                print(f"Established connection failed, handled by exception..")
                 return
 
         else:
@@ -149,8 +150,6 @@ def server_as_receiver(server_socket, addr_tuple_client):
             server_socket.close()
             return
 
-        # Treba vyriesit KA
-
         if data.flag == RST:
             print("An RST information has been received..\nConnection shutting down..")
             server_socket.close()
@@ -168,6 +167,7 @@ def server_as_receiver(server_socket, addr_tuple_client):
             receiving_packets_total = data.number
             print(f"Incoming data will consist of {receiving_packets_total} packets\n")
 
+            # ak sa prijal START posle sa ACK
             confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
             server_socket.sendto(confirmation_packet.__bytes__(False), addr_tuple_client)
 
@@ -177,22 +177,25 @@ def server_as_receiver(server_socket, addr_tuple_client):
             file = None
             while True:
                 try:
+                    # dalej sa caka na primanie FILE alebo TEXT packetov
                     data, address = server_socket.recvfrom(RECV_FROM)
                     data = packet_reconstruction(data, True)
 
                     if data.flag == FILE and data.number == 1:
                         file_flag = True
-                        #file = open(data.data, "w")
                         file = open(data.data, "ab")
 
                     if data.flag == TEXT:
                         full_message += data.data
                         received_packets += 1
 
+                    # ak sme prijali vsetky packety
                     if received_packets == receiving_packets_total:
 
+                        # zapiseme obsah do suboru
                         if file_flag and file != None:
                             file.write(full_message)
+                        # alebo vypiseme spravu
                         else:
                             print("Message: ", full_message)
                         break
@@ -300,11 +303,13 @@ def client_site(client_socket, server_addr_tuple):
 
     pass
 
+# funkcia sluzi na posielanie sprav alebo suborov zo strany klienta
 def client_as_sender(client_socket, server_addr_tuple, type):
 
     try:
         message = ""
         file_flag = False
+        file_name = None
         if type == "m":
             message = input("Enter the message: ")
         elif type == "f":
@@ -325,19 +330,21 @@ def client_as_sender(client_socket, server_addr_tuple, type):
         inicialization_mess_packet = Mypacket(START, num_of_packets, 0, 0, "")
         client_socket.sendto(inicialization_mess_packet.__bytes__(False), server_addr_tuple)
 
+        # prijatie odpovede na START flag
         data, server_addr_tuple = client_socket.recvfrom(RECV_FROM)
         data = packet_reconstruction(data, False)
 
+        # ak je START potvrdeny ACK
         if data.flag == ACK:
             count = 1
-
             flag = TEXT if (type == "m") else FILE
 
-            # ak sa posiela subor prvy packet posle nazov suboru
+            # ak sa posiela subor prvy packet nesie nazov suboru
             if count == 1 and flag == FILE:
                 file_name_packet = Mypacket(flag, count, 0, 0, file_name)
                 client_socket.sendto(file_name_packet.__bytes__(False), server_addr_tuple)
 
+            # dalej sa zacnu posielat packety nesuce spravu alebo obsah suboru
             for mess_part_packet in arr_mess:
                 mess_packet = Mypacket(TEXT, count, 0, 0, mess_part_packet)
                 client_socket.sendto(mess_packet.__bytes__(file_flag), server_addr_tuple)
