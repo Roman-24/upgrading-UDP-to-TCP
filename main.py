@@ -147,7 +147,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
             data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
             data = packet_reconstruction(data, False)
         except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
-            print(err)
+            print("Server: ", err)
             print("Server: Connection down!")
             server_socket.close()
             return
@@ -179,6 +179,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
             received_packets_all = []
             while True:
 
+                received_packets_count += 1
                 if receiving_packets_total - received_packets_count >= 5:
                     modulator = 5
                 else:
@@ -198,7 +199,6 @@ def server_as_receiver(server_socket, client_addr_tuple):
                         broken_packets = True
 
                     received_packets.append(data)
-                    received_packets_count += 1
 
                     if received_packets_count % modulator == 0:
                         if broken_packets:
@@ -214,9 +214,10 @@ def server_as_receiver(server_socket, client_addr_tuple):
                     # ak sme prijali vsetky packety
                     if received_packets_count == receiving_packets_total:
 
+                        received_packets_all = sorted(received_packets_all, key=lambda x: x.number, reverse=False)
+                        file_name = b""
+                        full_message = b""
                         for packet in received_packets_all:
-                            file_name = b""
-                            full_message = b""
 
                             if packet.flag == FILE:
                                 file_flag = True
@@ -227,15 +228,16 @@ def server_as_receiver(server_socket, client_addr_tuple):
 
                         # zapiseme obsah do suboru
                         if file_flag:
+                            file_name = file_name.decode(FORMAT)
                             file = open(file_name, "ab")
                             file.write(full_message)
                         # alebo vypiseme spravu
                         else:
-                            print("Message: ", full_message.decode())
+                            print("Message: ", full_message.decode(FORMAT))
                         break
 
                 except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
-                    print(err)
+                    print("Server: ", err)
                     print("Server: Connection lost! Received data can be broken..")
                     server_socket.close()
                     return
@@ -281,7 +283,7 @@ def mode_client():
                 client_site(client_socket, server_addr_tuple)
 
         except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
-            print(err)
+            print("Client: ", err)
             print("Connection not working!\nMaybe try it again..")
             client_socket.close()
             return
@@ -346,6 +348,7 @@ def client_as_sender(client_socket, server_addr_tuple, type):
         file_path = ""
         if type == "m":
             message = input("Enter the message: ")
+            message = message.encode(FORMAT)
         elif type == "f":
             file_path = input("Enter the full file path: ")
             #typewrite('C:\Users\bitar\PycharmProjects\PKS_zadanie2\\')
@@ -354,19 +357,17 @@ def client_as_sender(client_socket, server_addr_tuple, type):
             # flag na poslanie nazvu suboru
             temp_file = open(file_path, "rb")
             message = temp_file.read()
-            file_path = file_path.encode()
-            file_name = file_name.encode()
-
-        message = message.decode()
+            file_path = file_path.encode(FORMAT)
+            file_name = file_name.encode(FORMAT)
 
         # arr_mess = textwrap.wrap(message, MAX_DATA_SIZE)
         file_path_arr = [file_name[i:i+MAX_DATA_SIZE] for i in range(0, len(file_name), MAX_DATA_SIZE)]
         arr_mess = [message[i:i+MAX_DATA_SIZE] for i in range(0, len(message), MAX_DATA_SIZE)]
 
         # vypocet kolko bude fragmentov
-        num_of_packets_mess = math.ceil( (len(file_path_arr) + len(message)) / MAX_DATA_SIZE)
+        num_of_packets_total = len(file_path_arr) + len(arr_mess)
         # poslanie spravy so START flagom
-        inicialization_mess_packet = Mypacket(START, num_of_packets_mess, 0, 0, "")
+        inicialization_mess_packet = Mypacket(START, num_of_packets_total, 0, 0, "")
         client_socket.sendto(inicialization_mess_packet.__bytes__(False), server_addr_tuple)
 
         # prijatie odpovede na START flag
@@ -375,36 +376,38 @@ def client_as_sender(client_socket, server_addr_tuple, type):
 
         # ak je START potvrdeny ACK
         if data.flag == ACK:
-            count = 1
-            sent_packets = []
+            temp_count = 0
 
-            '''
-            Crc16.calc() je funkcia kt sa pouziva ne vypocet kontrolneho suctu
-            Argumetom funkcie je packet v podobe bajtstringu s hodnotou crc = 0
-            naslednej sa tato hodnota prida do packetu a packet sa odosle
-            '''
+            temp_all_packets_arr = file_path_arr + arr_mess
+            for i in range(len(temp_all_packets_arr)):
 
-            # posle sa rozfragmentovany nazov suboru
-            if type == "f":
-                for file_name_part_packet in file_path_arr:
-                    file_name_packet = Mypacket(FILE, count, 0, 0, file_name_part_packet)
-                    file_name_packet.crc = Crc16.calc(file_name_packet.__bytes__(True))
+                temp_count += 1
+                if num_of_packets_total - temp_count >= 5:
+                    modulator = 5
+                else:
+                    modulator = num_of_packets_total % 5
 
-                    sent_packets.append(file_name_packet)
-                    client_socket.sendto(file_name_packet.__bytes__(True), server_addr_tuple)
-                    count += 1
+                if temp_count <= len(file_path_arr):
+                    flag = FILE
+                else:
+                    flag = TEXT
 
-            # dalej sa zacnu posielat packety nesuce spravu alebo obsah suboru
-            for mess_part_packet in arr_mess:
-                mess_packet = Mypacket(TEXT, count, 0, 0, mess_part_packet)
-                mess_packet.crc = Crc16.calc(mess_packet.__bytes__(True))
+                packet_for_send = Mypacket(flag, temp_count, 0, 0, temp_all_packets_arr[i])
+                packet_for_send.crc = Crc16.calc(packet_for_send.__bytes__(True))
 
-                sent_packets.append(mess_packet)
-                client_socket.sendto(mess_packet.__bytes__(True), server_addr_tuple)
-                count += 1
+                client_socket.sendto(packet_for_send.__bytes__(True), server_addr_tuple)
+
+                if temp_count % modulator == 0:
+                    data, address = client_socket.recvfrom(RECV_FROM)
+                    data = packet_reconstruction(data, False)
+
+                    if data.flag == ACK:
+                        continue
+                    else:
+                        i -= modulator
 
     except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
-        print(err)
+        print("Client: ", err)
         print("Client: Connection down! Data error..")
         client_socket.close()
         return
