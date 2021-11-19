@@ -1,10 +1,12 @@
 import math
 import socket
+import sys
 import threading
 import time
 import textwrap
 import os
 # from pyautogui import typewrite
+from crccheck.crc import Crc16
 
 # ----- KONSTANTY -----
 
@@ -339,14 +341,25 @@ def client_as_sender(client_socket, server_addr_tuple, type):
             count = 1
             flag = TEXT if (type == "m") else FILE
 
+            '''
+            Crc16.calc() je funkcia kt sa pouziva ne vypocet kontrolneho suctu
+            Argumetom funkcie je packet v podobe bajtstringu s hodnotou crc = 0
+            naslednej sa tato hodnota prida do packetu a packet sa odosle
+            '''
+
             # ak sa posiela subor prvy packet nesie nazov suboru
             if count == 1 and flag == FILE:
                 file_name_packet = Mypacket(flag, count, 0, 0, file_name)
+                file_name_packet.crc = Crc16.calc(file_name_packet.__bytes__(False))
+                #print("Velkost je: ", len(file_name_packet.__bytes__(True)) - len(file_name_packet.data))
                 client_socket.sendto(file_name_packet.__bytes__(False), server_addr_tuple)
+                count += 1
 
             # dalej sa zacnu posielat packety nesuce spravu alebo obsah suboru
             for mess_part_packet in arr_mess:
                 mess_packet = Mypacket(TEXT, count, 0, 0, mess_part_packet)
+                mess_packet.crc = Crc16.calc(mess_packet.__bytes__(file_flag))
+                #print("Velkost je: ", len(mess_packet.__bytes__(file_flag)) - len(mess_packet.data))
                 client_socket.sendto(mess_packet.__bytes__(file_flag), server_addr_tuple)
                 count += 1
 
