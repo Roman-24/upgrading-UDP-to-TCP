@@ -76,18 +76,18 @@ def mode_server():
 
     address = "127.0.0.1"
     #address = input("IP address of server: ")
-    port = int(1234)
+    port = int(1236)
     #port = int(input("Server port: "))
-    addr_tuple_server = (address, port)
+    server_addr_tuple = (address, port)
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_socket.bind(addr_tuple_server)
+    server_socket.bind(server_addr_tuple)
 
-    server_site(server_socket, addr_tuple_server)
+    server_site(server_socket, server_addr_tuple)
     pass
 
 # zabezpecuje 3 way hand shake na strane serveru
-def server_site(server_socket, addr_tuple_server):
+def server_site(server_socket, server_addr_tuple):
 
     while (True):
 
@@ -100,13 +100,13 @@ def server_site(server_socket, addr_tuple_server):
             return
 
         elif client_input == "2":
-            switch_users(server_socket, addr_tuple_server)
+            switch_users(server_socket, server_addr_tuple)
         elif client_input == "1":
 
             print("Server is running..")
             try:
                 # cakanie na ziadost o spojenie SYN od klienta
-                data, addr_tuple_client = server_socket.recvfrom(RECV_FROM)
+                data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
                 data = packet_reconstruction(data, False)
 
                 # ak prisla ziadost o spojenie SYN
@@ -114,16 +114,16 @@ def server_site(server_socket, addr_tuple_server):
 
                     # server posle klientovy SYN ACK
                     initialization_packet = Mypacket(SYN + ACK, 0, 0, 0, "")
-                    server_socket.sendto(initialization_packet.__bytes__(False), addr_tuple_client)
+                    server_socket.sendto(initialization_packet.__bytes__(False), client_addr_tuple)
 
                     # cakanie na potvrdenie spojenia ACK od klienta
-                    data, addr_tuple_client = server_socket.recvfrom(RECV_FROM)
+                    data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
                     data = packet_reconstruction(data, False)
 
                     # ak prislo ACK tak spojenie je active
                     if data.flag == ACK:
-                        print(f"Established connection with {addr_tuple_client[0]}, port: {addr_tuple_client[1]}")
-                        server_as_receiver(server_socket, addr_tuple_client)
+                        print(f"Established connection with: {client_addr_tuple[0]}, port: {client_addr_tuple[1]}")
+                        server_as_receiver(server_socket, client_addr_tuple)
                     else:
                         print(f"Established connection failed!")
                         return
@@ -137,14 +137,14 @@ def server_site(server_socket, addr_tuple_server):
         pass
     pass
 
-def server_as_receiver(server_socket, addr_tuple_client):
+def server_as_receiver(server_socket, client_addr_tuple):
 
     while True:
         print("Server: can receiving text message or file..")
         server_socket.settimeout(TIMEOUT)
 
         try:
-            data, address = server_socket.recvfrom(RECV_FROM)
+            data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
             data = packet_reconstruction(data, False)
         except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
             print(err)
@@ -161,7 +161,7 @@ def server_as_receiver(server_socket, addr_tuple_client):
         # ak prisla keep alive poziadavka
         if data.flag == KA:
             acceptation_packet = Mypacket(ACK, 0, 0, 0, "")
-            server_socket.sendto(acceptation_packet.__bytes__(False), addr_tuple_client)
+            server_socket.sendto(acceptation_packet.__bytes__(False), client_addr_tuple)
             continue
 
         if data.flag == START:
@@ -171,16 +171,18 @@ def server_as_receiver(server_socket, addr_tuple_client):
 
             # ak sa prijal START posle sa ACK
             confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
-            server_socket.sendto(confirmation_packet.__bytes__(False), addr_tuple_client)
+            server_socket.sendto(confirmation_packet.__bytes__(False), client_addr_tuple)
 
-            received_packets = 0
+            received_packets_count = 0
             full_message = b""
             file_flag = False
             file = None
+            received_packets = []
+            broken_packets = []
             while True:
                 try:
                     # dalej sa caka na primanie FILE alebo TEXT packetov
-                    data, address = server_socket.recvfrom(RECV_FROM)
+                    data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
                     data = packet_reconstruction(data, True)
 
                     if data.flag == FILE and data.number == 1:
@@ -189,17 +191,17 @@ def server_as_receiver(server_socket, addr_tuple_client):
 
                     if data.flag == TEXT:
                         full_message += data.data
-                        received_packets += 1
+                        received_packets_count += 1
 
                     # ak sme prijali vsetky packety
-                    if received_packets == receiving_packets_total:
+                    if received_packets_count == receiving_packets_total:
 
                         # zapiseme obsah do suboru
                         if file_flag and file != None:
                             file.write(full_message)
                         # alebo vypiseme spravu
                         else:
-                            print("Message: ", full_message)
+                            print("Message: ", full_message.decode())
                         break
 
                 except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
@@ -218,16 +220,15 @@ def mode_client():
 
     print("Client is here")
 
+    address = "127.0.0.1"
+    # address = input("IP address of server: ")
+    port = int(1236)
+    # port = int(input("Port of server: "))
+    server_addr_tuple = (address, port)
+    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # client_socket.bind(server_addr_tuple)
+
     while True:
-
-        address = "127.0.0.1"
-        #address = input("IP address of server: ")
-        port = int(1234)
-        #port = int(input("Client port: "))
-        server_addr_tuple = (address, port)
-        client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # bin ???
-
         try:
             client_socket.settimeout(TIMEOUT)
 
@@ -277,7 +278,7 @@ def client_site(client_socket, server_addr_tuple):
             if client_input == "x":
                 exit_packet = Mypacket(RST, 0, 0, 0, "")
                 client_socket.sendto(exit_packet.__bytes__(False), server_addr_tuple)
-                return
+                continue
 
             elif client_input == "1":
                 client_as_sender(client_socket, server_addr_tuple, "m")
@@ -333,12 +334,13 @@ def client_as_sender(client_socket, server_addr_tuple, type):
         client_socket.sendto(inicialization_mess_packet.__bytes__(False), server_addr_tuple)
 
         # prijatie odpovede na START flag
-        data, server_addr_tuple = client_socket.recvfrom(RECV_FROM)
+        data, address = client_socket.recvfrom(RECV_FROM)
         data = packet_reconstruction(data, False)
 
         # ak je START potvrdeny ACK
         if data.flag == ACK:
             count = 1
+            sent_packets = []
             flag = TEXT if (type == "m") else FILE
 
             '''
@@ -351,7 +353,7 @@ def client_as_sender(client_socket, server_addr_tuple, type):
             if count == 1 and flag == FILE:
                 file_name_packet = Mypacket(flag, count, 0, 0, file_name)
                 file_name_packet.crc = Crc16.calc(file_name_packet.__bytes__(False))
-                #print("Velkost je: ", len(file_name_packet.__bytes__(True)) - len(file_name_packet.data))
+                sent_packets.append(file_name_packet)
                 client_socket.sendto(file_name_packet.__bytes__(False), server_addr_tuple)
                 count += 1
 
@@ -359,7 +361,7 @@ def client_as_sender(client_socket, server_addr_tuple, type):
             for mess_part_packet in arr_mess:
                 mess_packet = Mypacket(TEXT, count, 0, 0, mess_part_packet)
                 mess_packet.crc = Crc16.calc(mess_packet.__bytes__(file_flag))
-                #print("Velkost je: ", len(mess_packet.__bytes__(file_flag)) - len(mess_packet.data))
+                sent_packets.append(mess_packet)
                 client_socket.sendto(mess_packet.__bytes__(file_flag), server_addr_tuple)
                 count += 1
 
