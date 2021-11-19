@@ -415,9 +415,22 @@ def client_as_sender(client_socket, server_addr_tuple, type):
     return
 
 # ----- OTHERS FUNC -----
-def switch_users(client_socket, server_addr_tuple):
+def switch_users(change_socket, address):
 
-    pass
+    while True:
+        print("1 for client")
+        print("2 for server")
+        print("x to exit")
+        user_input = input()
+
+        if user_input == "1":
+            client_site(change_socket, address)
+        elif user_input == "2":
+            server_site(change_socket, address)
+        elif user_input == "x":
+            return 
+        else:
+            print("Wrong input, maybe try it again!")
 
 def start_thread(client_socket, server_addr_tuple):
     lock = threading.Lock()
