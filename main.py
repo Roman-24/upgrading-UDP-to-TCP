@@ -1,9 +1,8 @@
-import math
 import socket
+import math
 import sys
 import threading
 import time
-import textwrap
 import os
 from crccheck.crc import Crc16
 from crc16 import *
@@ -15,7 +14,7 @@ crc = CRC16()
 RECV_FROM = 1500
 FORMAT = "utf-8"
 TIMEOUT = 600
-size_of_chunk = 5
+SIZE_OF_CHUNK = 5
 
 # flags
 START = 0
@@ -183,18 +182,20 @@ def server_as_receiver(server_socket, client_addr_tuple):
             received_packets_all = []
 
             # vypocitaju sa balicky kt budu chodit
-            num_of_chunks = math.trunc(receiving_packets_total / size_of_chunk)
-            size_of_last_chunk = receiving_packets_total % size_of_chunk
-            sizes_of_chunk_arr = [size_of_chunk] * num_of_chunks
+            num_of_chunks = math.trunc(receiving_packets_total / SIZE_OF_CHUNK)
+            size_of_last_chunk = receiving_packets_total % SIZE_OF_CHUNK
+            sizes_of_chunk_arr = [SIZE_OF_CHUNK] * num_of_chunks
             sizes_of_chunk_arr.append(size_of_last_chunk)
 
-            for i in range(len(sizes_of_chunk_arr)):
+            i = 0
+            while i != len(sizes_of_chunk_arr):
 
-                for j in range(sizes_of_chunk_arr[i]):
+                broken_packets = False
+                broken_packets_local = False
+                j = 0
+                while j != sizes_of_chunk_arr[i]:
 
                     received_packets_count += 1
-
-                    broken_packets = False
                     try:
                         # dalej sa caka na primanie FILE alebo TEXT packetov
                         data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
@@ -206,7 +207,10 @@ def server_as_receiver(server_socket, client_addr_tuple):
 
                         if received_crc != calculated_crc:
                             broken_packets = True
+                            broken_packets_local = True
 
+                        print(f"Prijal sa packet: {data.number}, chyba: {broken_packets_local} , data: {data.data}")
+                        broken_packets_local = False
                         received_chunk_packets.append(data)
 
                         if j == sizes_of_chunk_arr[i] - 1:
@@ -215,12 +219,14 @@ def server_as_receiver(server_socket, client_addr_tuple):
                                 i -= 1
                                 confirmation_packet = Mypacket(NACK, 0, 0, 0, "")
                                 server_socket.sendto(confirmation_packet.__bytes__(False), client_addr_tuple)
+                                broken_packets = False
+                                received_chunk_packets = []
+                                break
                             else:
                                 confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
                                 server_socket.sendto(confirmation_packet.__bytes__(False), client_addr_tuple)
                                 received_packets_all += received_chunk_packets
-
-                            received_chunk_packets = []
+                                received_chunk_packets = []
 
                         # ak sme prijali vsetky packety
                         if received_packets_count == receiving_packets_total:
@@ -255,6 +261,8 @@ def server_as_receiver(server_socket, client_addr_tuple):
                         print("Server: Connection lost! Received data can be broken..")
                         server_socket.close()
                         return
+                    j += 1
+                i += 1
 
     pass
 
@@ -378,7 +386,7 @@ def client_as_sender(client_socket, server_addr_tuple, type):
     try:
         message = ""
         file_path = ""
-        MAX_DATA_SIZE = int(input(f"Enter the maximum size of fragment in interval [1-{MAX_DATA_SIZE}]: "))
+        max_packet_data_size = int(input(f"Enter the maximum size of fragment in interval [1-{MAX_DATA_SIZE}]: "))
         # @todo, ošetrenie intervalu ??
         if type == "m":
             message = input("Enter the message: ")
@@ -391,13 +399,18 @@ def client_as_sender(client_socket, server_addr_tuple, type):
             message = temp_file.read()
             file_path = file_path.encode(FORMAT)
 
-        # arr_mess = textwrap.wrap(message, MAX_DATA_SIZE)
-        file_path_arr = [file_path[i:i+MAX_DATA_SIZE] for i in range(0, len(file_path), MAX_DATA_SIZE)]
-        arr_mess = [message[i:i+MAX_DATA_SIZE] for i in range(0, len(message), MAX_DATA_SIZE)]
+        file_path_arr = [file_path[i:i+max_packet_data_size] for i in range(0, len(file_path), max_packet_data_size)]
+        arr_mess = [message[i:i+max_packet_data_size] for i in range(0, len(message), max_packet_data_size)]
 
         # vypocet kolko bude fragmentov
         temp_all_packets_arr = file_path_arr + arr_mess
         num_of_packets_total = len(temp_all_packets_arr)
+
+        # vnesenie chyby do prenosu
+        wrong_packet_flag = input("Chcete chybu? [a/n]: ")
+        if wrong_packet_flag == "a":
+            wrong_packet_num = int(input(f"Zadajte cislo chybneho packetu 1-{num_of_packets_total}: "))
+
         # poslanie spravy so START flagom obsahujuc pocet paketov kt bude server cakat
         inicialization_mess_packet = Mypacket(START, num_of_packets_total, 0, 0, "")
         client_socket.sendto(inicialization_mess_packet.__bytes__(False), server_addr_tuple)
@@ -411,14 +424,16 @@ def client_as_sender(client_socket, server_addr_tuple, type):
             temp_count = 0
 
             # vypocitaju sa balicky kt budu chodit
-            num_of_chunks = math.trunc(num_of_packets_total / size_of_chunk)
-            size_of_last_chunk = num_of_packets_total % size_of_chunk
-            sizes_of_chunk_arr = [size_of_chunk] * num_of_chunks
+            num_of_chunks = math.trunc(num_of_packets_total / SIZE_OF_CHUNK)
+            size_of_last_chunk = num_of_packets_total % SIZE_OF_CHUNK
+            sizes_of_chunk_arr = [SIZE_OF_CHUNK] * num_of_chunks
             sizes_of_chunk_arr.append(size_of_last_chunk)
 
-            for i in range(len(sizes_of_chunk_arr)):
+            i = 0
+            while i != len(sizes_of_chunk_arr):
 
-                for j in range(sizes_of_chunk_arr[i]):
+                j = 0
+                while j != sizes_of_chunk_arr[i]:
 
                     temp_count += 1
 
@@ -430,8 +445,9 @@ def client_as_sender(client_socket, server_addr_tuple, type):
                     packet_for_send = Mypacket(flag, temp_count, 0, 0, temp_all_packets_arr[temp_count - 1])
                     packet_for_send.crc = Crc16.calc(packet_for_send.__bytes__(True))
 
-                    # if packet_for_send.number % 15 == 0:
-                    #     packet_for_send = make_mistake_in_packet(packet_for_send)
+                    if temp_count == wrong_packet_num and wrong_packet_flag == "a":
+                        wrong_packet_flag = "n"
+                        packet_for_send = make_mistake_in_packet(packet_for_send)
 
                     client_socket.sendto(packet_for_send.__bytes__(True), server_addr_tuple)
 
@@ -439,10 +455,12 @@ def client_as_sender(client_socket, server_addr_tuple, type):
                         data, address = client_socket.recvfrom(RECV_FROM)
                         data = packet_reconstruction(data, False)
 
-                        if data.flag == ACK:
-                            continue
-                        else:
+                        if data.flag == NACK:
+                            temp_count -= sizes_of_chunk_arr[i]
                             i -= 1
+                            break
+                    j += 1
+                i += 1
 
     except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
         print("Client: ", err)
@@ -454,6 +472,8 @@ def client_as_sender(client_socket, server_addr_tuple, type):
 
 # ----- OTHERS FUNC -----
 def make_mistake_in_packet(packet):
+
+    packet.crc -= 1
 
     return packet
 
