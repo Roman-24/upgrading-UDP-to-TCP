@@ -297,6 +297,12 @@ def mode_client():
                 # ak je nadviazené spojenie aktivuje sa KA
                 client_site(client_socket, server_addr_tuple)
 
+                user_choice = input("Do you want to continue in client activity? [a/n]")
+                if user_choice == "a":
+                    continue
+                else:
+                    return
+
         except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
             print("Client: ", err)
             print("Client: connection not working!\nMaybe try it again..")
