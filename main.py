@@ -14,7 +14,7 @@ crc = CRC16()
 # universal
 RECV_FROM = 1500
 FORMAT = "utf-8"
-TIMEOUT = 60
+TIMEOUT = 600
 
 # flags
 START = 0
@@ -36,7 +36,7 @@ CLIENT_INTERVAL = 10
 thread_status = False
 
 # ----- POMOCNE VECI -----
-# class na lepsiu manipulaciu datami packetu
+# class pre lepsiu manipulaciu datami packetu
 class Mypacket:
 
     def __init__(self, flag, number, size, crc, data):
@@ -46,7 +46,7 @@ class Mypacket:
         self.crc = crc
         self.data = data
 
-    # custom funkcia na vytvorenie byte stringu obsahujuceho udaje o packete + data
+    # custom metoda na vytvorenie byte stringu obsahujuceho udaje o packete + data
     def __bytes__(self, flag_encode_off):
         data = self.data if flag_encode_off else self.data.encode(FORMAT)
         temp = self.flag.to_bytes(1, 'big') + self.number.to_bytes(3, 'big') + self.size.to_bytes(2, 'big') + self.crc.to_bytes(2, 'big') + data
@@ -90,7 +90,7 @@ def mode_server():
 # zabezpecuje 3 way hand shake na strane serveru
 def server_site(server_socket, server_addr_tuple):
 
-    while (True):
+    while True:
 
         print("1 for continue as server")
         print("2 for switching role")
