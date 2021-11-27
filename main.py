@@ -242,7 +242,8 @@ def server_as_receiver(server_socket, client_addr_tuple):
                                 file_path = file_path.decode(FORMAT)
                                 print(f"The full file name was {file_path}")
                                 file_name = os.path.basename(file_path)
-                                file = open(file_name, "ab")
+                                new_file_path = input("Enter the path where you want save file: ")
+                                file = open(new_file_path + file_name, "ab")
                                 file.write(full_message)
                                 print(f"File {file_name} was save in {os.getcwd()}")
                             # alebo vypiseme spravu
