@@ -10,11 +10,14 @@ from crc16 import *
 # ----- KONSTANTY -----
 crc = CRC16()
 
-# universal
 RECV_FROM = 1500
 FORMAT = "utf-8"
+# MAX_DATA_SIZE = ETH_II_PAYLOAD - IP_HEADER_LEN - UDP_HEADER_LEN - MY_HEADER
+MAX_DATA_SIZE = 1500 - 20 - 8 - 8
+thread_status = True
 TIMEOUT = 600
-SIZE_OF_CHUNK = 5
+KA_INTERVAL = 15
+SIZE_OF_CHUNK = 10
 
 # flags
 START = 0
@@ -25,15 +28,6 @@ KA = 16
 RST = 32
 TEXT = 64
 FILE = 128
-
-# server site
-packet_mistake = False
-
-# client site
-# MAX_DATA_SIZE = ETH_II_PAYLOAD - IP_HEADER_LEN - UDP_HEADER_LEN - MY_HEADER
-MAX_DATA_SIZE = 1500 - 20 - 8 - 8
-CLIENT_INTERVAL = 10
-thread_status = False
 
 # ----- POMOCNE VECI -----
 # class pre lepsiu manipulaciu datami packetu
@@ -314,65 +308,43 @@ def mode_client():
             # continue
 
 def client_site(client_socket, server_addr_tuple):
+
     global thread_status
-    local_thread_status = thread_status
     client_ka_thread = None
 
     while True:
 
-        # ak je nadviazane spojenie zapne sa KA
-        if local_thread_status:
+        if client_ka_thread is None:
             client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
 
         print("x for exit")
         print("1 for text message")
         print("2 for file message")
-        print("3 for keep alive ON")
-        print("4 for keep alive OFF")
-        print("5 for switching role")
+        print("3 for switching role")
         client_input = input()
 
-        if client_input == "x" or client_input == "1" or client_input == "2" or client_input == "5":
+        if client_input == "x" or client_input == "1" or client_input == "2" or client_input == "3":
             if client_ka_thread is not None:
                 thread_status = False
                 client_ka_thread.join()
+                client_ka_thread = None
 
             if client_input == "x":
                 exit_packet = Mypacket(RST, 0, 0, 0, "")
-                print("Client_ client is going down..")
+                print("Client: client is going down..")
                 client_socket.sendto(exit_packet.__bytes__(False), server_addr_tuple)
                 return
 
             elif client_input == "1":
                 client_as_sender(client_socket, server_addr_tuple, "m")
-
-                if local_thread_status:
-                    client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
-                continue
             elif client_input == "2":
                 client_as_sender(client_socket, server_addr_tuple, "f")
 
-                if local_thread_status:
-                    client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
-                continue
-
-            elif client_input == "5":
+            elif client_input == "3":
                 exit_packet = Mypacket(RST, 0, 0, 0, "")
-                print("Client_ client is going down..")
+                print("Client: client is going down..")
                 client_socket.sendto(exit_packet.__bytes__(False), server_addr_tuple)
                 switch_users(client_socket, server_addr_tuple)
-
-        elif client_input == "3":
-            client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
-
-        elif client_input == "4":
-            if client_ka_thread is not None:
-                thread_status = False
-                local_thread_status = thread_status
-                client_ka_thread.join() # kym thread neskonci tak sa neposunieme dalej
-                print("Keep alive OFF")
-            # else:
-            #     print("Keep alive was OFF and is OFF")
 
         else:
             print("Wrong input, maybe try it again!")
@@ -382,7 +354,6 @@ def client_site(client_socket, server_addr_tuple):
 # funkcia sluzi na posielanie sprav alebo suborov zo strany klienta
 def client_as_sender(client_socket, server_addr_tuple, type):
 
-    global MAX_DATA_SIZE
     try:
         message = ""
         file_path = ""
@@ -498,8 +469,7 @@ def call_keep_alive(client_socket, server_addr_tuple):
     global thread_status
     print("Keep alive ON")
     thread_status = True
-    client_ka_thread = start_thread(client_socket, server_addr_tuple)
-    return client_ka_thread
+    return start_thread(client_socket, server_addr_tuple)
 
 def start_thread(client_socket, server_addr_tuple):
     lock = threading.Lock()
@@ -512,7 +482,6 @@ def keep_alive(client_socket, server_addr_tuple, lock):
     global thread_status
 
     while True:
-
         if not thread_status:
             return
 
@@ -528,7 +497,7 @@ def keep_alive(client_socket, server_addr_tuple, lock):
             else:
                 print("Client keep_alive: connection ended")
                 break
-            time.sleep(CLIENT_INTERVAL)
+            time.sleep(KA_INTERVAL)
     pass
 
 def main():
