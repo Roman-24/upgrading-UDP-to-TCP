@@ -84,14 +84,12 @@ def server_site(server_socket, server_addr_tuple):
 
     while True:
 
-        print("1 for continue as server\n2 for switching role\nx for exit")
+        print("1 for continue as server\nx for exit")
         client_input = input()
 
         if client_input == "x":
             return
 
-        elif client_input == "2":
-            switch_users(server_socket, server_addr_tuple)
         elif client_input == "1":
 
             print("Server: running..")
@@ -320,7 +318,7 @@ def client_site(client_socket, server_addr_tuple):
         if client_ka_thread is None:
             client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
 
-        print("x for exit\n1 for text message\n2 for file message\n3 for switching role")
+        print("x for exit\n1 for text message\n2 for file message")
         client_input = input()
 
         if client_input == "x" or client_input == "1" or client_input == "2" or client_input == "3":
@@ -339,12 +337,6 @@ def client_site(client_socket, server_addr_tuple):
                 client_as_sender(client_socket, server_addr_tuple, "m")
             elif client_input == "2":
                 client_as_sender(client_socket, server_addr_tuple, "f")
-
-            elif client_input == "3":
-                exit_packet = Mypacket(RST, 0, 0, 0, "")
-                print("Client: client is going down..")
-                client_socket.sendto(exit_packet.__bytes__(False), server_addr_tuple)
-                switch_users(client_socket, server_addr_tuple)
 
         else:
             print("Wrong input, maybe try it again!")
@@ -446,21 +438,6 @@ def make_mistake_in_packet(packet):
     packet.crc -= 1
     return packet
 
-def switch_users(change_socket, address):
-
-    while True:
-        print("1 for client\n2 for server\nx to exit")
-        user_input = input()
-
-        if user_input == "1":
-            client_site(change_socket, address)
-        elif user_input == "2":
-            server_site(change_socket, address)
-        elif user_input == "x":
-            return
-        else:
-            print("Wrong input, maybe try it again!")
-
 def call_keep_alive(client_socket, server_addr_tuple):
     global thread_status
     print("Keep alive ON")
@@ -501,7 +478,7 @@ def main():
 
     device_type = ""
     while device_type != "x":
-        device_type = input("For server mode: s \nFor client mode: c \nFor exit: x\n")
+        device_type = input("For server mode: s \nFor client mode: c \nFor full exit from program: x\n")
 
         if device_type == "s":
             mode_server()
