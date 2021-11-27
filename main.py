@@ -5,15 +5,16 @@ import threading
 import time
 import textwrap
 import os
-# from pyautogui import typewrite
 from crccheck.crc import Crc16
+from crc16 import *
 
 # ----- KONSTANTY -----
+crc = CRC16()
 
 # universal
 RECV_FROM = 1500
 FORMAT = "utf-8"
-TIMEOUT = 200
+TIMEOUT = 60
 
 # flags
 START = 0
@@ -26,12 +27,13 @@ TEXT = 64
 FILE = 128
 
 # server site
+packet_mistake = False
 
 # client site
 # MAX_DATA_SIZE = ETH_II_PAYLOAD - IP_HEADER_LEN - UDP_HEADER_LEN - MY_HEADER
 MAX_DATA_SIZE = 1500 - 20 - 8 - 8
 CLIENT_INTERVAL = 10
-thread_status = True
+thread_status = False
 
 # ----- POMOCNE VECI -----
 # class na lepsiu manipulaciu datami packetu
@@ -73,11 +75,10 @@ def packet_reconstruction(packet_as_bajty, flag_decode_off):
 
 # funkcia sluzi ako spustitel serveru
 def mode_server():
-
     address = "127.0.0.1"
-    #address = input("IP address of server: ")
+    # address = input("IP address of server: ")
     port = int(1236)
-    #port = int(input("Server port: "))
+    # port = int(input("Server port: "))
     server_addr_tuple = (address, port)
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -124,6 +125,7 @@ def server_site(server_socket, server_addr_tuple):
                     if data.flag == ACK:
                         print(f"Established connection with: {client_addr_tuple[0]}, port: {client_addr_tuple[1]}")
                         server_as_receiver(server_socket, client_addr_tuple)
+                        continue
                     else:
                         print(f"Established connection failed!")
                         return
@@ -155,11 +157,12 @@ def server_as_receiver(server_socket, client_addr_tuple):
         if data.flag == RST:
             print("An RST information has been received..\nConnection shutting down..")
             server_socket.close()
-            return 0
+            return
 
         # keep alive
         # ak prisla keep alive poziadavka
         if data.flag == KA:
+            print("Server: KA received")
             acceptation_packet = Mypacket(ACK, 0, 0, 0, "")
             server_socket.sendto(acceptation_packet.__bytes__(False), client_addr_tuple)
             continue
@@ -215,22 +218,25 @@ def server_as_receiver(server_socket, client_addr_tuple):
                     if received_packets_count == receiving_packets_total:
 
                         received_packets_all = sorted(received_packets_all, key=lambda x: x.number, reverse=False)
-                        file_name = b""
+                        file_path = b""
                         full_message = b""
                         for packet in received_packets_all:
 
                             if packet.flag == FILE:
                                 file_flag = True
-                                file_name += packet.data
+                                file_path += packet.data
 
                             if packet.flag == TEXT:
                                 full_message += packet.data
 
                         # zapiseme obsah do suboru
                         if file_flag:
-                            file_name = file_name.decode(FORMAT)
+                            file_path = file_path.decode(FORMAT)
+                            print(f"The full file name was {file_path}")
+                            file_name = os.path.basename(file_path)
                             file = open(file_name, "ab")
                             file.write(full_message)
+                            print(f"File {file_name} was save in {os.getcwd()}")
                         # alebo vypiseme spravu
                         else:
                             print("Message: ", full_message.decode(FORMAT))
@@ -280,6 +286,8 @@ def mode_client():
                 client_socket.sendto(initialization_packet.__bytes__(False), server_addr_tuple)
 
                 print("Connected to address:", server_addr_tuple)
+
+                # ak je nadviazené spojenie aktivuje sa KA
                 client_site(client_socket, server_addr_tuple)
 
         except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
@@ -291,9 +299,15 @@ def mode_client():
 
 def client_site(client_socket, server_addr_tuple):
     global thread_status
-    thread = None
+    local_thread_status = thread_status
+    client_ka_thread = None
 
     while True:
+
+        # ak je nadviazane spojenie zapne sa KA
+        if local_thread_status:
+            client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
+
         print("x for exit")
         print("1 for text message")
         print("2 for file message")
@@ -303,35 +317,46 @@ def client_site(client_socket, server_addr_tuple):
         client_input = input()
 
         if client_input == "x" or client_input == "1" or client_input == "2" or client_input == "5":
-            if thread is not None:
+            if client_ka_thread is not None:
                 thread_status = False
-                thread.join()
+                client_ka_thread.join()
 
             if client_input == "x":
                 exit_packet = Mypacket(RST, 0, 0, 0, "")
+                print("Client_ client is going down..")
                 client_socket.sendto(exit_packet.__bytes__(False), server_addr_tuple)
-                continue
+                return
 
             elif client_input == "1":
                 client_as_sender(client_socket, server_addr_tuple, "m")
+
+                if local_thread_status:
+                    client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
                 continue
             elif client_input == "2":
                 client_as_sender(client_socket, server_addr_tuple, "f")
+
+                if local_thread_status:
+                    client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
                 continue
 
             elif client_input == "5":
+                exit_packet = Mypacket(RST, 0, 0, 0, "")
+                print("Client_ client is going down..")
+                client_socket.sendto(exit_packet.__bytes__(False), server_addr_tuple)
                 switch_users(client_socket, server_addr_tuple)
 
         elif client_input == "3":
-            print("Keep alive ON")
-            thread_status = True
-            thread = start_thread(client_socket, server_addr_tuple)
+            client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
 
         elif client_input == "4":
-            if thread is not None:
-                print("Keep alive OFF")
+            if client_ka_thread is not None:
                 thread_status = False
-                thread.join()
+                local_thread_status = thread_status
+                client_ka_thread.join() # kym thread neskonci tak sa neposunieme dalej
+                print("Keep alive OFF")
+            # else:
+            #     print("Keep alive was OFF and is OFF")
 
         else:
             print("Wrong input, maybe try it again!")
@@ -341,27 +366,25 @@ def client_site(client_socket, server_addr_tuple):
 # funkcia sluzi na posielanie sprav alebo suborov zo strany klienta
 def client_as_sender(client_socket, server_addr_tuple, type):
 
+    global MAX_DATA_SIZE
     try:
         message = ""
-        file_flag = False
-        file_name = ""
         file_path = ""
+        MAX_DATA_SIZE = int(input(f"Enter the maximum size of fragment in interval [1-{MAX_DATA_SIZE}]: "))
+        # @todo, ošetrenie intervalu ??
         if type == "m":
             message = input("Enter the message: ")
             message = message.encode(FORMAT)
         elif type == "f":
             file_path = input("Enter the full file path: ")
-            #typewrite('C:\Users\bitar\PycharmProjects\PKS_zadanie2\\')
-            file_name = os.path.basename(file_path)
 
             # flag na poslanie nazvu suboru
             temp_file = open(file_path, "rb")
             message = temp_file.read()
             file_path = file_path.encode(FORMAT)
-            file_name = file_name.encode(FORMAT)
 
         # arr_mess = textwrap.wrap(message, MAX_DATA_SIZE)
-        file_path_arr = [file_name[i:i+MAX_DATA_SIZE] for i in range(0, len(file_name), MAX_DATA_SIZE)]
+        file_path_arr = [file_path[i:i+MAX_DATA_SIZE] for i in range(0, len(file_path), MAX_DATA_SIZE)]
         arr_mess = [message[i:i+MAX_DATA_SIZE] for i in range(0, len(message), MAX_DATA_SIZE)]
 
         # vypocet kolko bude fragmentov
@@ -395,6 +418,9 @@ def client_as_sender(client_socket, server_addr_tuple, type):
                 packet_for_send = Mypacket(flag, temp_count, 0, 0, temp_all_packets_arr[i])
                 packet_for_send.crc = Crc16.calc(packet_for_send.__bytes__(True))
 
+                # if packet_for_send.number % 15 == 0:
+                #     packet_for_send = make_mistake_in_packet(packet_for_send)
+
                 client_socket.sendto(packet_for_send.__bytes__(True), server_addr_tuple)
 
                 if temp_count % modulator == 0:
@@ -415,6 +441,10 @@ def client_as_sender(client_socket, server_addr_tuple, type):
     return
 
 # ----- OTHERS FUNC -----
+def make_mistake_in_packet(packet):
+
+    return packet
+
 def switch_users(change_socket, address):
 
     while True:
@@ -428,9 +458,16 @@ def switch_users(change_socket, address):
         elif user_input == "2":
             server_site(change_socket, address)
         elif user_input == "x":
-            return 
+            return
         else:
             print("Wrong input, maybe try it again!")
+
+def call_keep_alive(client_socket, server_addr_tuple):
+    global thread_status
+    print("Keep alive ON")
+    thread_status = True
+    client_ka_thread = start_thread(client_socket, server_addr_tuple)
+    return client_ka_thread
 
 def start_thread(client_socket, server_addr_tuple):
     lock = threading.Lock()
@@ -440,6 +477,7 @@ def start_thread(client_socket, server_addr_tuple):
     return thread
 
 def keep_alive(client_socket, server_addr_tuple, lock):
+    global thread_status
 
     while True:
 
@@ -447,14 +485,16 @@ def keep_alive(client_socket, server_addr_tuple, lock):
             return
 
         with lock:
-            client_socket.sendto(str.encode(" "), server_addr_tuple)
-            data = client_socket.recv(RECV_FROM)
-            information = str(data.decode())
+            ka_packet = Mypacket(KA, 0, 0, 0, "")
+            client_socket.sendto(ka_packet.__bytes__(False), server_addr_tuple)
 
-            if information == "":
-                print("Connection is working..")
+            data, address = client_socket.recvfrom(RECV_FROM)
+            data = packet_reconstruction(data, False)
+
+            if data.flag == ACK:
+                print("Client keep_alive: connection is working..")
             else:
-                print("Connection ended")
+                print("Client keep_alive: connection ended")
                 break
             time.sleep(CLIENT_INTERVAL)
     pass
