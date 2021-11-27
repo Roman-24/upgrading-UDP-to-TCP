@@ -190,7 +190,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
 
                         received_crc = data.crc
                         data.crc = 0
-                        calculated_crc = CRC16.calculate(data.__bytes__(True))
+                        calculated_crc = crc16(data.__bytes__(True))
 
                         if received_crc != calculated_crc:
                             broken_packets = True
@@ -405,7 +405,7 @@ def client_as_sender(client_socket, server_addr_tuple, type):
                         flag = TEXT
 
                     packet_for_send = Mypacket(flag, temp_count, 0, 0, temp_all_packets_arr[temp_count - 1])
-                    packet_for_send.crc = CRC16.calculate(packet_for_send.__bytes__(True))
+                    packet_for_send.crc = crc16(packet_for_send.__bytes__(True))
 
                     if temp_count == wrong_packet_num and wrong_packet_flag == "a":
                         wrong_packet_flag = "n"
