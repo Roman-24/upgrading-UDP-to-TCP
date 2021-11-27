@@ -15,6 +15,7 @@ crc = CRC16()
 RECV_FROM = 1500
 FORMAT = "utf-8"
 TIMEOUT = 600
+size_of_chunk = 5
 
 # flags
 START = 0
@@ -178,75 +179,82 @@ def server_as_receiver(server_socket, client_addr_tuple):
 
             received_packets_count = 0
             file_flag = False
-            received_packets = []
+            received_chunk_packets = []
             received_packets_all = []
-            while True:
 
-                received_packets_count += 1
-                if receiving_packets_total - received_packets_count >= 5:
-                    modulator = 5
-                else:
-                    modulator = receiving_packets_total % 5
+            # vypocitaju sa balicky kt budu chodit
+            num_of_chunks = math.trunc(receiving_packets_total / size_of_chunk)
+            size_of_last_chunk = receiving_packets_total % size_of_chunk
+            sizes_of_chunk_arr = [size_of_chunk] * num_of_chunks
+            sizes_of_chunk_arr.append(size_of_last_chunk)
 
-                broken_packets = False
-                try:
-                    # dalej sa caka na primanie FILE alebo TEXT packetov
-                    data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
-                    data = packet_reconstruction(data, True)
+            for i in range(len(sizes_of_chunk_arr)):
 
-                    received_crc = data.crc
-                    data.crc = 0
-                    calculated_crc = Crc16.calc(data.__bytes__(True))
+                for j in range(sizes_of_chunk_arr[i]):
 
-                    if received_crc != calculated_crc:
-                        broken_packets = True
+                    received_packets_count += 1
 
-                    received_packets.append(data)
+                    broken_packets = False
+                    try:
+                        # dalej sa caka na primanie FILE alebo TEXT packetov
+                        data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
+                        data = packet_reconstruction(data, True)
 
-                    if received_packets_count % modulator == 0:
-                        if broken_packets:
-                            received_packets_count -= modulator
-                            confirmation_packet = Mypacket(NACK, 0, 0, 0, "")
-                            server_socket.sendto(confirmation_packet.__bytes__(False), client_addr_tuple)
-                        else:
-                            confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
-                            server_socket.sendto(confirmation_packet.__bytes__(False), client_addr_tuple)
-                            received_packets_all += received_packets
-                            received_packets = []
+                        received_crc = data.crc
+                        data.crc = 0
+                        calculated_crc = Crc16.calc(data.__bytes__(True))
 
-                    # ak sme prijali vsetky packety
-                    if received_packets_count == receiving_packets_total:
+                        if received_crc != calculated_crc:
+                            broken_packets = True
 
-                        received_packets_all = sorted(received_packets_all, key=lambda x: x.number, reverse=False)
-                        file_path = b""
-                        full_message = b""
-                        for packet in received_packets_all:
+                        received_chunk_packets.append(data)
 
-                            if packet.flag == FILE:
-                                file_flag = True
-                                file_path += packet.data
+                        if j == sizes_of_chunk_arr[i] - 1:
+                            if broken_packets:
+                                received_packets_count -= sizes_of_chunk_arr[i]
+                                i -= 1
+                                confirmation_packet = Mypacket(NACK, 0, 0, 0, "")
+                                server_socket.sendto(confirmation_packet.__bytes__(False), client_addr_tuple)
+                            else:
+                                confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
+                                server_socket.sendto(confirmation_packet.__bytes__(False), client_addr_tuple)
+                                received_packets_all += received_chunk_packets
 
-                            if packet.flag == TEXT:
-                                full_message += packet.data
+                            received_chunk_packets = []
 
-                        # zapiseme obsah do suboru
-                        if file_flag:
-                            file_path = file_path.decode(FORMAT)
-                            print(f"The full file name was {file_path}")
-                            file_name = os.path.basename(file_path)
-                            file = open(file_name, "ab")
-                            file.write(full_message)
-                            print(f"File {file_name} was save in {os.getcwd()}")
-                        # alebo vypiseme spravu
-                        else:
-                            print("Message: ", full_message.decode(FORMAT))
-                        break
+                        # ak sme prijali vsetky packety
+                        if received_packets_count == receiving_packets_total:
 
-                except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
-                    print("Server: ", err)
-                    print("Server: Connection lost! Received data can be broken..")
-                    server_socket.close()
-                    return
+                            received_packets_all = sorted(received_packets_all, key=lambda x: x.number, reverse=False)
+                            file_path = b""
+                            full_message = b""
+                            for packet in received_packets_all:
+
+                                if packet.flag == FILE:
+                                    file_flag = True
+                                    file_path += packet.data
+
+                                if packet.flag == TEXT:
+                                    full_message += packet.data
+
+                            # zapiseme obsah do suboru
+                            if file_flag:
+                                file_path = file_path.decode(FORMAT)
+                                print(f"The full file name was {file_path}")
+                                file_name = os.path.basename(file_path)
+                                file = open(file_name, "ab")
+                                file.write(full_message)
+                                print(f"File {file_name} was save in {os.getcwd()}")
+                            # alebo vypiseme spravu
+                            else:
+                                print("Message: ", full_message.decode(FORMAT))
+                            break
+
+                    except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
+                        print("Server: ", err)
+                        print("Server: Connection lost! Received data can be broken..")
+                        server_socket.close()
+                        return
 
     pass
 
@@ -388,8 +396,9 @@ def client_as_sender(client_socket, server_addr_tuple, type):
         arr_mess = [message[i:i+MAX_DATA_SIZE] for i in range(0, len(message), MAX_DATA_SIZE)]
 
         # vypocet kolko bude fragmentov
-        num_of_packets_total = len(file_path_arr) + len(arr_mess)
-        # poslanie spravy so START flagom
+        temp_all_packets_arr = file_path_arr + arr_mess
+        num_of_packets_total = len(temp_all_packets_arr)
+        # poslanie spravy so START flagom obsahujuc pocet paketov kt bude server cakat
         inicialization_mess_packet = Mypacket(START, num_of_packets_total, 0, 0, "")
         client_socket.sendto(inicialization_mess_packet.__bytes__(False), server_addr_tuple)
 
@@ -401,36 +410,39 @@ def client_as_sender(client_socket, server_addr_tuple, type):
         if data.flag == ACK:
             temp_count = 0
 
-            temp_all_packets_arr = file_path_arr + arr_mess
-            for i in range(len(temp_all_packets_arr)):
+            # vypocitaju sa balicky kt budu chodit
+            num_of_chunks = math.trunc(num_of_packets_total / size_of_chunk)
+            size_of_last_chunk = num_of_packets_total % size_of_chunk
+            sizes_of_chunk_arr = [size_of_chunk] * num_of_chunks
+            sizes_of_chunk_arr.append(size_of_last_chunk)
 
-                temp_count += 1
-                if num_of_packets_total - temp_count >= 5:
-                    modulator = 5
-                else:
-                    modulator = num_of_packets_total % 5
+            for i in range(len(sizes_of_chunk_arr)):
 
-                if temp_count <= len(file_path_arr):
-                    flag = FILE
-                else:
-                    flag = TEXT
+                for j in range(sizes_of_chunk_arr[i]):
 
-                packet_for_send = Mypacket(flag, temp_count, 0, 0, temp_all_packets_arr[i])
-                packet_for_send.crc = Crc16.calc(packet_for_send.__bytes__(True))
+                    temp_count += 1
 
-                # if packet_for_send.number % 15 == 0:
-                #     packet_for_send = make_mistake_in_packet(packet_for_send)
-
-                client_socket.sendto(packet_for_send.__bytes__(True), server_addr_tuple)
-
-                if temp_count % modulator == 0:
-                    data, address = client_socket.recvfrom(RECV_FROM)
-                    data = packet_reconstruction(data, False)
-
-                    if data.flag == ACK:
-                        continue
+                    if temp_count <= len(file_path_arr):
+                        flag = FILE
                     else:
-                        i -= modulator
+                        flag = TEXT
+
+                    packet_for_send = Mypacket(flag, temp_count, 0, 0, temp_all_packets_arr[temp_count - 1])
+                    packet_for_send.crc = Crc16.calc(packet_for_send.__bytes__(True))
+
+                    # if packet_for_send.number % 15 == 0:
+                    #     packet_for_send = make_mistake_in_packet(packet_for_send)
+
+                    client_socket.sendto(packet_for_send.__bytes__(True), server_addr_tuple)
+
+                    if j == sizes_of_chunk_arr[i] - 1:
+                        data, address = client_socket.recvfrom(RECV_FROM)
+                        data = packet_reconstruction(data, False)
+
+                        if data.flag == ACK:
+                            continue
+                        else:
+                            i -= 1
 
     except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
         print("Client: ", err)
