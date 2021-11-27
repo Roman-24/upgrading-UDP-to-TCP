@@ -8,8 +8,6 @@ from crccheck.crc import Crc16
 from crc16 import *
 
 # ----- KONSTANTY -----
-crc = CRC16()
-
 RECV_FROM = 1500
 FORMAT = "utf-8"
 # MAX_DATA_SIZE = ETH_II_PAYLOAD - IP_HEADER_LEN - UDP_HEADER_LEN - MY_HEADER
@@ -86,9 +84,7 @@ def server_site(server_socket, server_addr_tuple):
 
     while True:
 
-        print("1 for continue as server")
-        print("2 for switching role")
-        print("x for exit")
+        print("1 for continue as server\n2 for switching role\nx for exit")
         client_input = input()
 
         if client_input == "x":
@@ -98,7 +94,7 @@ def server_site(server_socket, server_addr_tuple):
             switch_users(server_socket, server_addr_tuple)
         elif client_input == "1":
 
-            print("Server is running..")
+            print("Server: running..")
             try:
                 # cakanie na ziadost o spojenie SYN od klienta
                 data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
@@ -117,15 +113,15 @@ def server_site(server_socket, server_addr_tuple):
 
                     # ak prislo ACK tak spojenie je active
                     if data.flag == ACK:
-                        print(f"Established connection with: {client_addr_tuple[0]}, port: {client_addr_tuple[1]}")
+                        print(f"Server: established connection with: {client_addr_tuple[0]}, port: {client_addr_tuple[1]}")
                         server_as_receiver(server_socket, client_addr_tuple)
                         continue
                     else:
-                        print(f"Established connection failed!")
+                        print(f"Server: established connection failed!")
                         return
 
             except OSError:
-                print(f"Established connection failed, handled by exception..")
+                print(f"Server: established connection failed, handled by exception..")
                 return
 
         else:
@@ -149,7 +145,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
             return
 
         if data.flag == RST:
-            print("An RST information has been received..\nConnection shutting down..")
+            print("Server: a RST information has been received..\nConnection shutting down..")
             server_socket.close()
             return
 
@@ -164,7 +160,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
         if data.flag == START:
             # na kolko packetov je to co sa prijima rozdelene
             receiving_packets_total = data.number
-            print(f"Incoming data will consist of {receiving_packets_total} packets\n")
+            print(f"Server: incoming data will consist of {receiving_packets_total} packets..\n")
 
             # ak sa prijal START posle sa ACK
             confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
@@ -203,7 +199,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
                             broken_packets = True
                             broken_packets_local = True
 
-                        print(f"Prijal sa packet: {data.number}, chyba: {broken_packets_local} , data: {data.data}")
+                        print(f"Server: received packet num: {data.number}, chyba: {broken_packets_local} , data: {data.data}")
                         broken_packets_local = False
                         received_chunk_packets.append(data)
 
@@ -240,15 +236,15 @@ def server_as_receiver(server_socket, client_addr_tuple):
                             # zapiseme obsah do suboru
                             if file_flag:
                                 file_path = file_path.decode(FORMAT)
-                                print(f"The full file name was {file_path}")
+                                print(f"Server: the full file name was {file_path}")
                                 file_name = os.path.basename(file_path)
                                 new_file_path = input("Enter the path where you want save file: ")
                                 file = open(new_file_path + file_name, "ab")
                                 file.write(full_message)
-                                print(f"File {file_name} was save in {os.getcwd()}")
+                                print(f"Server: file {file_name} was save in {os.getcwd()}")
                             # alebo vypiseme spravu
                             else:
-                                print("Message: ", full_message.decode(FORMAT))
+                                print("Server: message: ", full_message.decode(FORMAT))
                             break
 
                     except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
@@ -267,7 +263,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
 
 def mode_client():
 
-    print("Client is here")
+    print("Client: active..")
 
     address = "127.0.0.1"
     # address = input("IP address of server: ")
@@ -296,14 +292,14 @@ def mode_client():
                 initialization_packet = Mypacket(ACK, 0, 0, 0, "")
                 client_socket.sendto(initialization_packet.__bytes__(False), server_addr_tuple)
 
-                print("Connected to address:", server_addr_tuple)
+                print("Client: connected to address:", server_addr_tuple)
 
                 # ak je nadviazené spojenie aktivuje sa KA
                 client_site(client_socket, server_addr_tuple)
 
         except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
             print("Client: ", err)
-            print("Connection not working!\nMaybe try it again..")
+            print("Client: connection not working!\nMaybe try it again..")
             client_socket.close()
             return
             # continue
@@ -318,10 +314,7 @@ def client_site(client_socket, server_addr_tuple):
         if client_ka_thread is None:
             client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
 
-        print("x for exit")
-        print("1 for text message")
-        print("2 for file message")
-        print("3 for switching role")
+        print("x for exit\n1 for text message\n2 for file message\n3 for switching role")
         client_input = input()
 
         if client_input == "x" or client_input == "1" or client_input == "2" or client_input == "3":
@@ -379,9 +372,9 @@ def client_as_sender(client_socket, server_addr_tuple, type):
         num_of_packets_total = len(temp_all_packets_arr)
 
         # vnesenie chyby do prenosu
-        wrong_packet_flag = input("Chcete chybu? [a/n]: ")
+        wrong_packet_flag = input("Do you want mistake in communication? [a/n]: ")
         if wrong_packet_flag == "a":
-            wrong_packet_num = int(input(f"Zadajte cislo chybneho packetu 1-{num_of_packets_total}: "))
+            wrong_packet_num = int(input(f"Enter num of packet with will be wrong [1-{num_of_packets_total}]: "))
 
         # poslanie spravy so START flagom obsahujuc pocet paketov kt bude server cakat
         inicialization_mess_packet = Mypacket(START, num_of_packets_total, 0, 0, "")
@@ -436,7 +429,7 @@ def client_as_sender(client_socket, server_addr_tuple, type):
 
     except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
         print("Client: ", err)
-        print("Client: Connection down! Data error..")
+        print("Client: connection down! Data error..")
         client_socket.close()
         return
 
@@ -444,17 +437,13 @@ def client_as_sender(client_socket, server_addr_tuple, type):
 
 # ----- OTHERS FUNC -----
 def make_mistake_in_packet(packet):
-
     packet.crc -= 1
-
     return packet
 
 def switch_users(change_socket, address):
 
     while True:
-        print("1 for client")
-        print("2 for server")
-        print("x to exit")
+        print("1 for client\n2 for server\nx to exit")
         user_input = input()
 
         if user_input == "1":
@@ -504,9 +493,9 @@ def keep_alive(client_socket, server_addr_tuple, lock):
 def main():
     print("Pycharm starting..")
 
-    device_type = input("Pre mod server zadaj: s \nPre mod client zadaj: c \nPre koniec zadaj: x\n")
-
+    device_type = ""
     while device_type != "x":
+        device_type = input("For server mode: s \nFor client mode: c \nFor exit: x\n")
 
         if device_type == "s":
             mode_server()
@@ -514,8 +503,6 @@ def main():
             mode_client()
         else:
             print("Nespravna volba")
-
-        device_type = input("Pre mod server zadaj: s \nPre mod client zadaj: c \nPre koniec zadaj: x\n")
 
 if __name__ == "__main__":
     main()
