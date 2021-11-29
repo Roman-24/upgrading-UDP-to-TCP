@@ -63,13 +63,11 @@ def packet_reconstruction(packet_as_bajty, flag_decode_off):
 
 
 # ----- SERVER SITE FUNCS -----
-
-# funkcia sluzi ako spustitel serveru
 def mode_server():
-    address = "127.0.0.1"
-    # address = input("IP address of server: ")
-    port = int(1236)
-    # port = int(input("Server port: "))
+    # address = "127.0.0.1"
+    address = input("IP address of server: ")
+    # port = int(1236)
+    port = int(input("Server port: "))
     server_addr_tuple = (address, port)
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -146,7 +144,6 @@ def server_as_receiver(server_socket, client_addr_tuple):
             server_socket.close()
             return
 
-        # keep alive
         # ak prisla keep alive poziadavka
         if data.flag == KA:
             print("Server: KA received")
@@ -257,18 +254,15 @@ def server_as_receiver(server_socket, client_addr_tuple):
 
 
 # ----- CLIENT SITE FUNCS -----
-
 def mode_client():
-
     print("Client: active..")
 
-    address = "127.0.0.1"
-    # address = input("IP address of server: ")
-    port = int(1236)
-    # port = int(input("Port of server: "))
+    # address = "127.0.0.1"
+    address = input("IP address of server: ")
+    # port = int(1236)
+    port = int(input("Port of server: "))
     server_addr_tuple = (address, port)
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # client_socket.bind(server_addr_tuple)
 
     while True:
         try:
@@ -305,7 +299,6 @@ def mode_client():
             print("Client: connection not working!\nMaybe try it again..")
             client_socket.close()
             return
-            # continue
 
 def client_site(client_socket, server_addr_tuple):
 
