@@ -12,8 +12,8 @@ FORMAT = "utf-8"
 # MAX_DATA_SIZE = ETH_II_PAYLOAD - IP_HEADER_LEN - UDP_HEADER_LEN - MY_HEADER
 MAX_DATA_SIZE = 1500 - 20 - 8 - 8
 thread_status = True
-TIMEOUT = 600
-KA_INTERVAL = 15
+TIMEOUT = 25
+KA_INTERVAL = 10
 SIZE_OF_CHUNK = 10
 
 # flags
@@ -64,10 +64,10 @@ def packet_reconstruction(packet_as_bajty, flag_decode_off):
 
 # ----- SERVER SITE FUNCS -----
 def mode_server():
-    # address = "127.0.0.1"
-    address = input("IP address of server: ")
-    # port = int(1236)
-    port = int(input("Server port: "))
+    address = "127.0.0.1"
+    # address = input("IP address of server: ")
+    port = int(1236)
+    # port = int(input("Server port: "))
     server_addr_tuple = (address, port)
 
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -257,10 +257,10 @@ def server_as_receiver(server_socket, client_addr_tuple):
 def mode_client():
     print("Client: active..")
 
-    # address = "127.0.0.1"
-    address = input("IP address of server: ")
-    # port = int(1236)
-    port = int(input("Port of server: "))
+    address = "127.0.0.1"
+    # address = input("IP address of server: ")
+    port = int(1236)
+    # port = int(input("Port of server: "))
     server_addr_tuple = (address, port)
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -301,14 +301,14 @@ def mode_client():
             return
 
 def client_site(client_socket, server_addr_tuple):
-
     global thread_status
     client_ka_thread = None
 
     while True:
 
-        if client_ka_thread is None:
+        if thread_status:
             client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
+            # print("Počet threadov je:", threading.active_count())
 
         print("x for exit\n1 for text message\n2 for file message")
         client_input = input()
@@ -317,7 +317,7 @@ def client_site(client_socket, server_addr_tuple):
             if client_ka_thread is not None:
                 thread_status = False
                 client_ka_thread.join()
-                client_ka_thread = None
+                # client_ka_thread = None
 
             if client_input == "x":
                 exit_packet = Mypacket(RST, 0, 0, 0, "")
@@ -329,6 +329,8 @@ def client_site(client_socket, server_addr_tuple):
                 client_as_sender(client_socket, server_addr_tuple, "m")
             elif client_input == "2":
                 client_as_sender(client_socket, server_addr_tuple, "f")
+
+            thread_status = True
 
         else:
             print("Wrong input, maybe try it again!")
@@ -363,6 +365,7 @@ def client_as_sender(client_socket, server_addr_tuple, type):
 
         # vnesenie chyby do prenosu
         wrong_packet_flag = input("Do you want mistake in communication? [a/n]: ")
+        wrong_packet_num = -1
         if wrong_packet_flag == "a":
             wrong_packet_num = int(input(f"Enter num of packet with will be wrong [1-{num_of_packets_total}]: "))
 
@@ -434,35 +437,31 @@ def call_keep_alive(client_socket, server_addr_tuple):
     global thread_status
     print("Keep alive ON")
     thread_status = True
-    return start_thread(client_socket, server_addr_tuple)
 
-def start_thread(client_socket, server_addr_tuple):
-    lock = threading.Lock()
-    thread = threading.Thread(target=keep_alive, args=(client_socket, server_addr_tuple, lock))
+    thread = threading.Thread(target=keep_alive, args=(client_socket, server_addr_tuple))
     thread.daemon = True
     thread.start()
     return thread
 
-def keep_alive(client_socket, server_addr_tuple, lock):
+def keep_alive(client_socket, server_addr_tuple):
     global thread_status
 
     while True:
         if not thread_status:
             return
 
-        with lock:
-            ka_packet = Mypacket(KA, 0, 0, 0, "")
-            client_socket.sendto(ka_packet.__bytes__(False), server_addr_tuple)
+        ka_packet = Mypacket(KA, 0, 0, 0, "")
+        client_socket.sendto(ka_packet.__bytes__(False), server_addr_tuple)
 
-            data, address = client_socket.recvfrom(RECV_FROM)
-            data = packet_reconstruction(data, False)
+        data, address = client_socket.recvfrom(RECV_FROM)
+        data = packet_reconstruction(data, False)
 
-            if data.flag == ACK:
-                print("Client keep_alive: connection is working..")
-            else:
-                print("Client keep_alive: connection ended")
-                break
-            time.sleep(KA_INTERVAL)
+        if data.flag == ACK:
+            print("Client keep_alive: connection is working..")
+        else:
+            print("Client keep_alive: connection ended")
+            break
+        time.sleep(KA_INTERVAL)
     pass
 
 def main():
