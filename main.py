@@ -64,33 +64,38 @@ def packet_reconstruction(packet_as_bajty, flag_decode_off):
 
 # ----- SERVER SITE FUNCS -----
 def mode_server():
-    address = "127.0.0.1"
-    # address = input("IP address of server: ")
-    port = int(1236)
-    # port = int(input("Server port: "))
-    server_addr_tuple = (address, port)
+    try:
+        # address = "127.0.0.1"
+        address = input("IP address of server: ")
+        # port = int(1236)
+        port = int(input("Server port: "))
+        server_addr_tuple = (address, port)
 
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    server_socket.bind(server_addr_tuple)
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        server_socket.bind(server_addr_tuple)
 
-    server_site(server_socket, server_addr_tuple)
+        server_site(server_socket, server_addr_tuple)
+        server_socket.close()
+    except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
+        print("Server: ", err)
     pass
 
 # zabezpecuje 3 way hand shake na strane serveru
 def server_site(server_socket, server_addr_tuple):
 
     while True:
+        try:
 
-        print("1 for continue as server\nx for exit")
-        client_input = input()
+            print("1 for continue as server\nx for exit")
+            client_input = input()
 
-        if client_input == "x":
-            return
+            if client_input == "x":
+                return
 
-        elif client_input == "1":
+            elif client_input == "1":
 
-            print("Server: running..")
-            try:
+                print("Server: running..")
+
                 # cakanie na ziadost o spojenie SYN od klienta
                 data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
                 data = packet_reconstruction(data, False)
@@ -114,73 +119,69 @@ def server_site(server_socket, server_addr_tuple):
                     else:
                         print(f"Server: established connection failed!")
                         return
+            else:
+                print("Server: wrong input, maybe try it again!")
+            pass
 
-            except OSError:
-                print(f"Server: established connection failed, handled by exception..")
-                return
+        except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
+            print("Server: ", err)
+            print("Server: established connection failed, handled by exception..")
+            return
 
-        else:
-            print("Server: wrong input, maybe try it again!")
-        pass
     pass
 
 def server_as_receiver(server_socket, client_addr_tuple):
 
     while True:
-        print("Server: can receiving text message or file..")
-        server_socket.settimeout(TIMEOUT)
-
         try:
+            print("Server: can receiving text message or file..")
+            server_socket.settimeout(TIMEOUT)
+
             data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
             data = packet_reconstruction(data, False)
-        except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
-            print("Server: ", err)
-            print("Server: Connection down!")
-            server_socket.close()
-            return
 
-        if data.flag == RST:
-            print("Server: a RST information has been received..\nConnection shutting down..")
-            server_socket.close()
-            return
+            if data.flag == RST:
+                print("Server: a RST information has been received..\nConnection shutting down..")
+                server_socket.close()
+                return
 
-        # ak prisla keep alive poziadavka
-        if data.flag == KA:
-            print("Server: KA received")
-            acceptation_packet = Mypacket(ACK, 0, 0, 0, "")
-            server_socket.sendto(acceptation_packet.__bytes__(False), client_addr_tuple)
-            continue
+            # ak prisla keep alive poziadavka
+            if data.flag == KA:
+                print("Server: KA received")
+                acceptation_packet = Mypacket(ACK, 0, 0, 0, "")
+                server_socket.sendto(acceptation_packet.__bytes__(False), client_addr_tuple)
+                continue
 
-        if data.flag == START:
-            # na kolko packetov je to co sa prijima rozdelene
-            receiving_packets_total = data.number
-            print(f"Server: incoming data will consist of {receiving_packets_total} packets..\n")
+            if data.flag == START:
+                # na kolko packetov je to co sa prijima rozdelene
+                receiving_packets_total = data.number
+                print(f"Server: incoming data will consist of {receiving_packets_total} packets..\n")
 
-            # ak sa prijal START posle sa ACK
-            confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
-            server_socket.sendto(confirmation_packet.__bytes__(False), client_addr_tuple)
+                # ak sa prijal START posle sa ACK
+                confirmation_packet = Mypacket(ACK, 0, 0, 0, "")
+                server_socket.sendto(confirmation_packet.__bytes__(False), client_addr_tuple)
 
-            received_packets_count = 0
-            file_flag = False
-            received_chunk_packets = []
-            received_packets_all = []
+                received_packets_count = 0
+                file_flag = False
+                received_chunk_packets = []
+                received_packets_all = []
 
-            # vypocitaju sa balicky kt budu chodit
-            num_of_chunks = math.trunc(receiving_packets_total / SIZE_OF_CHUNK)
-            size_of_last_chunk = receiving_packets_total % SIZE_OF_CHUNK
-            sizes_of_chunk_arr = [SIZE_OF_CHUNK] * num_of_chunks
-            sizes_of_chunk_arr.append(size_of_last_chunk)
+                # vypocitaju sa balicky kt budu chodit
+                num_of_chunks = math.trunc(receiving_packets_total / SIZE_OF_CHUNK)
+                size_of_last_chunk = receiving_packets_total % SIZE_OF_CHUNK
+                sizes_of_chunk_arr = [SIZE_OF_CHUNK] * num_of_chunks
+                sizes_of_chunk_arr.append(size_of_last_chunk)
 
-            i = 0
-            while i != len(sizes_of_chunk_arr):
+                i = 0
+                while i != len(sizes_of_chunk_arr):
 
-                broken_packets = False
-                broken_packets_local = False
-                j = 0
-                while j != sizes_of_chunk_arr[i]:
+                    broken_packets = False
+                    broken_packets_local = False
+                    j = 0
+                    while j != sizes_of_chunk_arr[i]:
 
-                    received_packets_count += 1
-                    try:
+                        received_packets_count += 1
+
                         # dalej sa caka na primanie FILE alebo TEXT packetov
                         data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
                         data = packet_reconstruction(data, True)
@@ -241,13 +242,14 @@ def server_as_receiver(server_socket, client_addr_tuple):
                                 print("Server: message: ", full_message.decode(FORMAT))
                             break
 
-                    except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
-                        print("Server: ", err)
-                        print("Server: Connection lost! Received data can be broken..")
-                        server_socket.close()
-                        return
-                    j += 1
-                i += 1
+                        j += 1
+                    i += 1
+
+        except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
+            print("Server: ", err)
+            print("Server: Connection lost! Received data can be broken..")
+            server_socket.close()
+            return
 
     pass
 
@@ -257,15 +259,15 @@ def server_as_receiver(server_socket, client_addr_tuple):
 def mode_client():
     print("Client: active..")
 
-    address = "127.0.0.1"
-    # address = input("IP address of server: ")
-    port = int(1236)
-    # port = int(input("Port of server: "))
-    server_addr_tuple = (address, port)
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # address = "127.0.0.1"
+        address = input("IP address of server: ")
+        # port = int(1236)
+        port = int(input("Port of server: "))
+        server_addr_tuple = (address, port)
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    while True:
-        try:
+        while True:
             client_socket.settimeout(TIMEOUT)
 
             # poslanie poziadavky na spojenie SYN
@@ -292,13 +294,15 @@ def mode_client():
                 if user_choice == "a":
                     continue
                 else:
+                    client_socket.close()
                     return
 
-        except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
-            print("Client: ", err)
-            print("Client: connection not working!\nMaybe try it again..")
-            client_socket.close()
-            return
+        client_socket.close()
+
+    except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
+        print("Client: ", err)
+        print("Client: connection not working!\nMaybe try it again..")
+        return
 
 def client_site(client_socket, server_addr_tuple):
     global thread_status
@@ -344,7 +348,7 @@ def client_as_sender(client_socket, server_addr_tuple, type):
         message = ""
         file_path = ""
         max_packet_data_size = int(input(f"Enter the maximum size of fragment in interval [1-{MAX_DATA_SIZE}]: "))
-        # @todo, ošetrenie intervalu ??
+
         if type == "m":
             message = input("Enter the message: ")
             message = message.encode(FORMAT)
@@ -448,6 +452,7 @@ def keep_alive(client_socket, server_addr_tuple):
 
     while True:
         if not thread_status:
+            join()
             return
 
         ka_packet = Mypacket(KA, 0, 0, 0, "")
