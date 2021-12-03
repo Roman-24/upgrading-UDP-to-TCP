@@ -12,7 +12,7 @@ FORMAT = "utf-8"
 # MAX_DATA_SIZE = ETH_II_PAYLOAD - IP_HEADER_LEN - UDP_HEADER_LEN - MY_HEADER
 MAX_DATA_SIZE = 1500 - 20 - 8 - 8
 thread_status = True
-TIMEOUT = 25
+TIMEOUT = 60
 KA_INTERVAL = 10
 SIZE_OF_CHUNK = 10
 
@@ -51,7 +51,7 @@ def packet_reconstruction(packet_as_bajty, flag_decode_off):
     size = int.from_bytes(packet_as_bajty[4:6], 'big')
     crc = int.from_bytes(packet_as_bajty[6:8], 'big')
 
-    # flad urcuje ci budu prijate bajty decodeovane alebo ostanu v podobne raw bajtov
+    # flag urcuje ci budu prijate bajty decodeovane alebo ostanu v podobne raw bajtov
     if flag_decode_off:
         data = packet_as_bajty[8:]
     else:
@@ -237,7 +237,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
                                 new_file_path = input("Enter the path where you want save file: ")
                                 file = open(new_file_path + file_name, "ab")
                                 file.write(full_message)
-                                print(f"Server: file {file_name} was save in {os.getcwd()}")
+                                print(f"Server: file {file_name} was save in {new_file_path}")
                             # alebo vypiseme spravu
                             else:
                                 print("Server: message: ", full_message.decode(FORMAT))
