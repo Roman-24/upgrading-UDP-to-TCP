@@ -309,20 +309,18 @@ def client_site(client_socket, server_addr_tuple):
     global thread_status
     client_ka_thread = None
 
-    while True:
+    if thread_status:
+        client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
+        print("Počet threadov je:", threading.active_count())
 
-        if thread_status:
-            client_ka_thread = call_keep_alive(client_socket, server_addr_tuple)
-            # print("Počet threadov je:", threading.active_count())
+    while True:
 
         print("x for exit\n1 for text message\n2 for file message")
         client_input = input()
 
         if client_input == "x" or client_input == "1" or client_input == "2" or client_input == "3":
-            if client_ka_thread is not None:
+            if thread_status:
                 thread_status = False
-                client_ka_thread.join()
-                # client_ka_thread = None
 
             if client_input == "x":
                 exit_packet = Mypacket(RST, 0, 0, 0, "")
