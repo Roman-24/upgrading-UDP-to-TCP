@@ -64,13 +64,14 @@ def packet_reconstruction(packet_as_bajty, flag_decode_off):
 
 # ----- SERVER SITE FUNCS -----
 def mode_server():
-    try:
-        # address = "127.0.0.1"
-        address = input("IP address of server: ")
-        # port = int(1236)
-        port = int(input("Server port: "))
-        server_addr_tuple = (address, port)
 
+    # address = "127.0.0.1"
+    address = input("IP address of server: ")
+    # port = int(1236)
+    port = int(input("Server port: "))
+    server_addr_tuple = (address, port)
+
+    try:
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         server_socket.bind(server_addr_tuple)
 
@@ -84,18 +85,16 @@ def mode_server():
 def server_site(server_socket, server_addr_tuple):
 
     while True:
-        try:
+        print("1 for continue as server\nx for exit")
+        client_input = input()
 
-            print("1 for continue as server\nx for exit")
-            client_input = input()
+        if client_input == "x":
+            return
 
-            if client_input == "x":
-                return
+        elif client_input == "1":
+            print("Server: running..")
 
-            elif client_input == "1":
-
-                print("Server: running..")
-
+            try:
                 # cakanie na ziadost o spojenie SYN od klienta
                 data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
                 data = packet_reconstruction(data, False)
@@ -119,22 +118,24 @@ def server_site(server_socket, server_addr_tuple):
                     else:
                         print(f"Server: established connection failed!")
                         return
-            else:
-                print("Server: wrong input, maybe try it again!")
-            pass
 
-        except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
-            print("Server: ", err)
-            print("Server: established connection failed, handled by exception..")
-            return
+                else:
+                    print("Server: wrong input, maybe try it again!")
+                pass
 
+            except (socket.timeout, socket.gaierror, socket.error, OSError, Exception) as err:
+                print("Server: ", err)
+                print("Server: established connection failed, handled by exception..")
+                return
     pass
 
 def server_as_receiver(server_socket, client_addr_tuple):
 
     while True:
+
+        print("Server: can receiving text message or file..")
+
         try:
-            print("Server: can receiving text message or file..")
             server_socket.settimeout(TIMEOUT)
 
             data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
@@ -258,13 +259,13 @@ def server_as_receiver(server_socket, client_addr_tuple):
 # ----- CLIENT SITE FUNCS -----
 def mode_client():
     print("Client: active..")
+    # address = "127.0.0.1"
+    address = input("IP address of server: ")
+    # port = int(1236)
+    port = int(input("Port of server: "))
+    server_addr_tuple = (address, port)
 
     try:
-        # address = "127.0.0.1"
-        address = input("IP address of server: ")
-        # port = int(1236)
-        port = int(input("Port of server: "))
-        server_addr_tuple = (address, port)
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         while True:
@@ -344,11 +345,11 @@ def client_site(client_socket, server_addr_tuple):
 # funkcia sluzi na posielanie sprav alebo suborov zo strany klienta
 def client_as_sender(client_socket, server_addr_tuple, type):
 
-    try:
-        message = ""
-        file_path = ""
-        max_packet_data_size = int(input(f"Enter the maximum size of fragment in interval [1-{MAX_DATA_SIZE}]: "))
+    message = ""
+    file_path = ""
+    max_packet_data_size = int(input(f"Enter the maximum size of fragment in interval [1-{MAX_DATA_SIZE}]: "))
 
+    try:
         if type == "m":
             message = input("Enter the message: ")
             message = message.encode(FORMAT)
@@ -451,22 +452,19 @@ def keep_alive(client_socket, server_addr_tuple):
     global thread_status
 
     while True:
-        if not thread_status:
-            join()
-            return
+        if thread_status:
+            ka_packet = Mypacket(KA, 0, 0, 0, "")
+            client_socket.sendto(ka_packet.__bytes__(False), server_addr_tuple)
 
-        ka_packet = Mypacket(KA, 0, 0, 0, "")
-        client_socket.sendto(ka_packet.__bytes__(False), server_addr_tuple)
+            data, address = client_socket.recvfrom(RECV_FROM)
+            data = packet_reconstruction(data, False)
 
-        data, address = client_socket.recvfrom(RECV_FROM)
-        data = packet_reconstruction(data, False)
-
-        if data.flag == ACK:
-            print("Client keep_alive: connection is working..")
-        else:
-            print("Client keep_alive: connection ended")
-            break
-        time.sleep(KA_INTERVAL)
+            if data.flag == ACK:
+                print("Client keep_alive: connection is working..")
+            else:
+                print("Client keep_alive: connection ended")
+                break
+            time.sleep(KA_INTERVAL)
     pass
 
 def main():
