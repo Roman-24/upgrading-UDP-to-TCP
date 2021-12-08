@@ -4,7 +4,6 @@ import sys
 import threading
 import time
 import os
-from crc16 import *
 
 # ----- KONSTANTY -----
 RECV_FROM = 1500
@@ -27,6 +26,28 @@ TEXT = 64
 FILE = 128
 
 # ----- POMOCNE VECI -----
+#crc:
+# zdroj:
+# https://stackoverflow.com/questions/35205702/calculating-crc16-in-python
+def crc16(data: bytes):
+    xor_in = 0x0000  # initial value
+    xor_out = 0x0000  # final XOR value
+    poly = 0x8005  # generator polinom (normal form)
+
+    reg = xor_in
+    for octet in data:
+        # reflect in
+        for i in range(8):
+            topbit = reg & 0x8000
+            if octet & (0x80 >> i):
+                topbit ^= 0x8000
+            reg <<= 1
+            if topbit:
+                reg ^= poly
+        reg &= 0xFFFF
+        # reflect out
+    return reg ^ xor_out
+
 # class pre lepsiu manipulaciu datami packetu
 class Mypacket:
 
@@ -66,7 +87,7 @@ def packet_reconstruction(packet_as_bajty, flag_decode_off):
 def mode_server():
 
     # address = "127.0.0.1"
-    address = input("IP address of server: ")
+    address = input("IP address: ")
     # port = int(1236)
     port = int(input("Server port: "))
     server_addr_tuple = (address, port)
@@ -197,7 +218,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
                             broken_packets_local = True
 
                         print(f"Server: received packet num: {data.number}, chyba: {broken_packets_local} , data: {data.data}")
-                        print(f"Server: packet data(fragment) size: {len(data.data)}, total packet size: {data_temp_for_print}")
+                        print(f"Server: packet data(fragment) size: {len(data.data)}B, total packet size: {data_temp_for_print}B")
                         broken_packets_local = False
                         received_chunk_packets.append(data)
 
@@ -264,7 +285,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
 def mode_client():
     print("Client: active..")
     # address = "127.0.0.1"
-    address = input("IP address of server: ")
+    address = input("IP address: ")
     # port = int(1236)
     port = int(input("Port of server: "))
     server_addr_tuple = (address, port)
