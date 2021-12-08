@@ -197,7 +197,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
                             broken_packets_local = True
 
                         print(f"Server: received packet num: {data.number}, chyba: {broken_packets_local} , data: {data.data}")
-                        print(f"Server: packet data size: {len(data.data)}, total packet size: {data_temp_for_print}")
+                        print(f"Server: packet data(fragment) size: {len(data.data)}, total packet size: {data_temp_for_print}")
                         broken_packets_local = False
                         received_chunk_packets.append(data)
 
@@ -396,6 +396,8 @@ def client_as_sender(client_socket, server_addr_tuple, type):
             size_of_last_chunk = num_of_packets_total % SIZE_OF_CHUNK
             sizes_of_chunk_arr = [SIZE_OF_CHUNK] * num_of_chunks
             sizes_of_chunk_arr.append(size_of_last_chunk)
+
+            print(f"Client: num of fragments is: {num_of_packets_total}, size of fragment:\n{max_packet_data_size}")
 
             i = 0
             while i != len(sizes_of_chunk_arr):
