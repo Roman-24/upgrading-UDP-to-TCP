@@ -185,6 +185,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
 
                         # dalej sa caka na primanie FILE alebo TEXT packetov
                         data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
+                        data_temp_for_print = len(data)
                         data = packet_reconstruction(data, True)
 
                         received_crc = data.crc
@@ -196,6 +197,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
                             broken_packets_local = True
 
                         print(f"Server: received packet num: {data.number}, chyba: {broken_packets_local} , data: {data.data}")
+                        print(f"Server: packet data size: {len(data.data)}, total packet size: {data_temp_for_print}")
                         broken_packets_local = False
                         received_chunk_packets.append(data)
 
@@ -231,9 +233,11 @@ def server_as_receiver(server_socket, client_addr_tuple):
 
                             # zapiseme obsah do suboru
                             if file_flag:
+                                print(f"Server: the file was received!")
                                 file_path = file_path.decode(FORMAT)
                                 print(f"Server: the full file name was {file_path}")
                                 file_name = os.path.basename(file_path)
+                                print(f"Server: only file name is/was: {file_name}")
                                 new_file_path = input("Enter the path where you want save file: ")
                                 file = open(new_file_path + file_name, "ab")
                                 file.write(full_message)
@@ -356,6 +360,9 @@ def client_as_sender(client_socket, server_addr_tuple, type):
 
             # flag na poslanie nazvu suboru
             temp_file = open(file_path, "rb")
+            print(f"Client: file path is: {file_path}")
+            file_name = os.path.basename(file_path)
+            print(f"Client: only file name is: {file_name}")
             message = temp_file.read()
             file_path = file_path.encode(FORMAT)
 
