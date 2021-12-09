@@ -26,7 +26,7 @@ TEXT = 64
 FILE = 128
 
 # ----- POMOCNE VECI -----
-#crc:
+# crc:
 # zdroj:
 # https://stackoverflow.com/questions/35205702/calculating-crc16-in-python
 def crc16(data: bytes):
@@ -48,7 +48,7 @@ def crc16(data: bytes):
         # reflect out
     return reg ^ xor_out
 
-# class pre lepsiu manipulaciu datami packetu
+# class pre lepsiu manipulaciu atributmi packetu
 class Mypacket:
 
     def __init__(self, flag, number, size, crc, data):
@@ -159,6 +159,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
         try:
             server_socket.settimeout(TIMEOUT)
 
+            # priajtie uvodnej spravy pre datovi prenos, RST alebo KA
             data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
             data = packet_reconstruction(data, False)
 
@@ -194,12 +195,14 @@ def server_as_receiver(server_socket, client_addr_tuple):
                 sizes_of_chunk_arr = [SIZE_OF_CHUNK] * num_of_chunks
                 sizes_of_chunk_arr.append(size_of_last_chunk)
 
+                # prijimanie dat kym chodia data
                 i = 0
                 while i != len(sizes_of_chunk_arr):
 
                     broken_packets = False
                     broken_packets_local = False
                     j = 0
+                    # primanie chunku
                     while j != sizes_of_chunk_arr[i]:
 
                         received_packets_count += 1
@@ -209,10 +212,10 @@ def server_as_receiver(server_socket, client_addr_tuple):
                         data_temp_for_print = len(data)
                         data = packet_reconstruction(data, True)
 
+                        # kontrola crc prijateho paketu
                         received_crc = data.crc
                         data.crc = 0
                         calculated_crc = crc16(data.__bytes__(True))
-
                         if received_crc != calculated_crc:
                             broken_packets = True
                             broken_packets_local = True
@@ -222,6 +225,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
                         broken_packets_local = False
                         received_chunk_packets.append(data)
 
+                        # ak sa prijal cely chunk
                         if j == sizes_of_chunk_arr[i] - 1:
                             if broken_packets:
                                 received_packets_count -= sizes_of_chunk_arr[i]
@@ -387,6 +391,7 @@ def client_as_sender(client_socket, server_addr_tuple, type):
             message = temp_file.read()
             file_path = file_path.encode(FORMAT)
 
+        # rozfragmentovanie
         file_path_arr = [file_path[i:i+max_packet_data_size] for i in range(0, len(file_path), max_packet_data_size)]
         arr_mess = [message[i:i+max_packet_data_size] for i in range(0, len(message), max_packet_data_size)]
 
@@ -442,6 +447,7 @@ def client_as_sender(client_socket, server_addr_tuple, type):
 
                     client_socket.sendto(packet_for_send.__bytes__(True), server_addr_tuple)
 
+                    # po odoslani chunku sa caka odpoved ACK alebo NACK
                     if j == sizes_of_chunk_arr[i] - 1:
                         data, address = client_socket.recvfrom(RECV_FROM)
                         data = packet_reconstruction(data, False)
