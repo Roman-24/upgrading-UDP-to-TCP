@@ -25,6 +25,10 @@ RST = 32
 TEXT = 64
 FILE = 128
 
+# doimple
+prijate_pakety = 0
+prijate_pakety_chybne = 0
+
 # ----- POMOCNE VECI -----
 # crc:
 # zdroj:
@@ -82,7 +86,6 @@ def packet_reconstruction(packet_as_bajty, flag_decode_off):
     return packet_as_obj
 
 
-
 # ----- SERVER SITE FUNCS -----
 def mode_server():
 
@@ -104,7 +107,7 @@ def mode_server():
 
 # zabezpecuje 3 way hand shake na strane serveru
 def server_site(server_socket, server_addr_tuple):
-
+    global prijate_pakety, prijate_pakety_chybne
     while True:
         print("1 for continue as server\nx for exit")
         client_input = input()
@@ -135,6 +138,7 @@ def server_site(server_socket, server_addr_tuple):
                     if data.flag == ACK:
                         print(f"Server: established connection with: {client_addr_tuple[0]}, port: {client_addr_tuple[1]}")
                         server_as_receiver(server_socket, client_addr_tuple)
+                        print(f"Doimple: vsetky prijate: {prijate_pakety} z toho chybne prijate: {prijate_pakety_chybne}")
                         continue
                     else:
                         print(f"Server: established connection failed!")
@@ -151,7 +155,7 @@ def server_site(server_socket, server_addr_tuple):
     pass
 
 def server_as_receiver(server_socket, client_addr_tuple):
-
+    global prijate_pakety, prijate_pakety_chybne
     while True:
 
         print("Server: can receiving text message or file..")
@@ -209,6 +213,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
 
                         # dalej sa caka na primanie FILE alebo TEXT packetov
                         data, client_addr_tuple = server_socket.recvfrom(RECV_FROM)
+                        prijate_pakety += 1
                         data_temp_for_print = len(data)
                         data = packet_reconstruction(data, True)
 
@@ -219,6 +224,7 @@ def server_as_receiver(server_socket, client_addr_tuple):
                         if received_crc != calculated_crc:
                             broken_packets = True
                             broken_packets_local = True
+                            prijate_pakety_chybne += 1
 
                         print(f"Server: received packet num: {data.number}, chyba: {broken_packets_local} , data: {data.data}")
                         print(f"Server: packet data(fragment) size: {len(data.data)}B, total packet size: {data_temp_for_print}B")
